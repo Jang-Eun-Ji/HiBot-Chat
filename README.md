@@ -4,7 +4,8 @@ cd backend
 
 python -m venv venv
 
-source venv/Scripts/activate
+window: source venv/Scripts/activate
+mac: source venv/bin/activate
 
 pip install -r requirements.txt
 
@@ -26,3 +27,8 @@ cd frontend
 npm install
 
 npm start
+
+
+
+인메모리
+- 현재 백터 메모리로 
