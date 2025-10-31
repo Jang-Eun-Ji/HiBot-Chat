@@ -57,7 +57,7 @@ function App() {
         <h1>FAQ 챗봇</h1>
         
         {/* 채팅 내역이 표시될 창 */}
-        <div className="chat-window">
+        <div>
           {chatHistory.map((msg, index) => (
             <div key={index} className={`message ${msg.sender}`}>
               <p>{msg.text}</p>
@@ -65,9 +65,9 @@ function App() {
           ))}
         </div>
 
-        {/* 메시지 입력 폼 */}
-        <form className="chat-input-form" onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit}>
           <input
+            className=''
             type="text"
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
@@ -75,7 +75,6 @@ function App() {
           />
           <button type="submit">전송</button>
         </form>
-
       </header>
     </div>
   );
