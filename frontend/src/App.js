@@ -1,27 +1,18 @@
 import React, { useState } from 'react';
 import './App.css';
-import Input from './input';
+import Input from './Input';
+import ChatHistory from './ChatHistory';
 
 function App() {
-  // 전체 대화 내역 (배열)
   const [chatHistory, setChatHistory] = useState([]);
 
-  
-
   return (
-    <div className="App">
-      <header className="bg-white">
-        <h1>FAQ 챗봇</h1>
-        <div>
-          {chatHistory.map((msg, index) => (
-            <div key={index} className={`message ${msg.sender}`}>
-              <p>{msg.text}</p>
-            </div>
-          ))}
-        </div>
-
+    <div className="h-screen bg-slate-600 flex flex-col justify-center items-center">
+      <h1 className="text-2xl font-bold text-white mb-6">FAQ 챗봇</h1>
+      <div className='flex flex-col w-[80%] gap-4'>
+        <ChatHistory chatHistory={chatHistory} />
         <Input setChatHistory={setChatHistory} />
-      </header>
+      </div>
     </div>
   );
 }
