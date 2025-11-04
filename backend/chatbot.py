@@ -34,8 +34,19 @@ document_store = InMemoryDocumentStore()
 
 # (B) 텍스트 임베더 (무료 SentenceTransformers 임베딩 모델 사용)
 #     로컬에서 실행되므로 데이터가 외부로 전송되지 않습니다.
-text_embedder = SentenceTransformersTextEmbedder(model="all-MiniLM-L6-v2")
-document_embedder = SentenceTransformersDocumentEmbedder(model="all-MiniLM-L6-v2")
+try:
+    text_embedder = SentenceTransformersTextEmbedder(model="all-MiniLM-L6-v2")
+    document_embedder = SentenceTransformersDocumentEmbedder(model="all-MiniLM-L6-v2")
+    print("✅ 임베딩 모델이 성공적으로 로드되었습니다.")
+except Exception as e:
+    print(f"⚠️ 임베딩 모델 로드 중 오류 발생: {e}")
+    print("📋 해결 방법:")
+    print("   1. 인터넷 연결을 확인해주세요.")
+    print("   2. 기업 방화벽이 있다면 SSL 설정을 확인해주세요.")
+    print("   3. pip install --upgrade certifi 명령을 실행해보세요.")
+    # 임시로 None으로 설정하여 프로그램이 계속 실행되도록 함
+    text_embedder = None
+    document_embedder = None
 
 # (C) 리트리버 (검색기)
 retriever = InMemoryEmbeddingRetriever(document_store=document_store, top_k=5) # 5개 조각 검색
@@ -98,13 +109,16 @@ try:
 
         # 3. SentenceTransformers 임베더로 임베딩 실행 (로컬에서 처리)
         #    (이때 문서 조각들이 로컬에서 처리되므로 외부로 전송되지 않습니다)
-        document_embedder.warm_up()  # 임베더 초기화
-        embedded_docs = document_embedder.run(split_docs)["documents"]
+        if document_embedder is not None:
+            document_embedder.warm_up()  # 임베더 초기화
+            embedded_docs = document_embedder.run(split_docs)["documents"]
 
-        # 4. 저장소에 쓰기
-        document_store.write_documents(embedded_docs)
-        
-        print(f"✅ {len(embedded_docs)}개의 문서 조각을 성공적으로 색인했습니다.")
+            # 4. 저장소에 쓰기
+            document_store.write_documents(embedded_docs)
+            
+            print(f"✅ {len(embedded_docs)}개의 문서 조각을 성공적으로 색인했습니다.")
+        else:
+            print("⚠️ 임베더를 사용할 수 없어 문서 색인을 건너뜁니다.")
 
 except Exception as e:
     print(f"❌ 문서 색인 중 오류 발생: {e}")
@@ -112,17 +126,34 @@ except Exception as e:
 # --- 3. [질문 처리] RAG 파이프라인 구축 ---
 
 # 검색 전용 파이프라인 구축 (생성기는 별도 처리)
-search_pipeline = Pipeline()
+if text_embedder is not None:
+    search_pipeline = Pipeline()
+    
+    # 파이프라인에 컴포넌트 추가
+    search_pipeline.add_component("query_embedder", text_embedder) # 1. 질문 임베딩
+    search_pipeline.add_component("retriever", retriever)       # 2. 문서 검색
+else:
+    search_pipeline = None
+    print("⚠️ 임베더를 사용할 수 없어 검색 파이프라인을 생성하지 않습니다.")
 
-# 파이프라인에 컴포넌트 추가
-search_pipeline.add_component("query_embedder", text_embedder) # 1. 질문 임베딩
-search_pipeline.add_component("retriever", retriever)       # 2. 문서 검색
-
-# 컴포넌트 연결
-search_pipeline.connect("query_embedder.embedding", "retriever.query_embedding")
-
-# 검색용 임베더 초기화
-text_embedder.warm_up()
+# 컴포넌트 연결 (파이프라인이 있는 경우에만)
+if search_pipeline is not None:
+    search_pipeline.connect("query_embedder.embedding", "retriever.query_embedding")
+    
+    # 검색용 임베더 초기화
+    if text_embedder is not None:
+        try:
+            text_embedder.warm_up()
+            print("✅ RAG 파이프라인이 성공적으로 초기화되었습니다.")
+        except Exception as e:
+            print(f"⚠️ 텍스트 임베더 초기화 실패: {e}")
+            print("📋 SSL 오류 해결 방법:")
+            print("   1. pip install --upgrade certifi")
+            print("   2. 기업 네트워크인 경우 IT 부서에 문의하세요.")
+            # 파이프라인을 None으로 설정하여 RAG 없이 동작하도록 함
+            search_pipeline = None
+    else:
+        print("⚠️ 텍스트 임베더 초기화를 건너뜁니다.")
 
 
 # --- 4. 챗봇 실행 함수 ---
@@ -131,6 +162,13 @@ def ask_chatbot(question):
     print(f"\n[질문] 💬: {question}")
     
     try:
+        if search_pipeline is None:
+            # 파이프라인이 없으면 RAG 없이 직접 Gemini에게 질문
+            print("⚠️ 문서 검색 기능을 사용할 수 없습니다. 일반 질문으로 처리합니다.")
+            answer = create_gemini_response(question)
+            print(f"[답변] 🤖: {answer}")
+            return answer
+        
         # 1단계: 관련 문서 검색
         search_result = search_pipeline.run({"query_embedder": {"text": question}})
         retrieved_docs = search_result["retriever"]["documents"]
