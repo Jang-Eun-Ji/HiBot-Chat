@@ -1,13 +1,12 @@
 import { useState } from "react";
 
-function Input({ setChatHistory, setLoading }) {
+function Input({ setChatHistory, isLoading, setIsLoading }) {
     const [currentMessage, setCurrentMessage] = useState('');
-
+    const notAllowed = isLoading || !currentMessage;
     // 메시지 전송 처리 함수
     const handleSubmit = async (e) => {
         e.preventDefault(); // 폼 전송 시 페이지 새로고침 방지
-
-        setLoading(true);
+        setIsLoading(true);
         const userMessage = currentMessage.trim();
         if (!userMessage) return; // 빈 메시지는 전송하지 않음
 
@@ -42,7 +41,7 @@ function Input({ setChatHistory, setLoading }) {
                 newHistory[newHistory.length - 1] = { sender: 'bot', text: data.response };
                 return newHistory;
             });
-            setLoading(false);
+            setIsLoading(false);
         } catch (error) {
             console.error('챗봇 응답 오류:', error);
             // 5. 오류 발생 시
@@ -51,7 +50,7 @@ function Input({ setChatHistory, setLoading }) {
                 newHistory[newHistory.length - 1] = { sender: 'bot', text: '오류가 발생했습니다. 서버를 확인해주세요.' };
                 return newHistory;
             });
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
@@ -66,7 +65,11 @@ function Input({ setChatHistory, setLoading }) {
                     class="w-full border border-gray-300 rounded-lg py-2 px-3 pr-16 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button
-                    class="absolute top-2 right-2 bg-blue-500 text-white text-sm px-3 py-1 rounded-md hover:bg-blue-600 transition"
+                    class={`absolute top-2 right-2 text-sm px-3 py-1 rounded-md transition ${notAllowed
+                            ? "bg-gray-400 text-gray-200 cursor-not-allowed"
+                            : "bg-blue-500 text-white hover:bg-blue-600"
+                        }`}
+                    disabled={notAllowed}
                 >
                     전송
                 </button>
