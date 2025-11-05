@@ -1,12 +1,12 @@
 # 색인 파일
 import os
 import argparse  # (1) 수동 실행 옵션을 받기 위해 추가
-from haystack_ai import Pipeline
+from haystack import Pipeline
 # (2) DuckDB용 컴포넌트로 변경
-from haystack_ai.document_stores.duckdb import DuckDBDocumentStore
-from haystack_ai.components.embedders import SentenceTransformersDocumentEmbedder
-from haystack_ai.components.preprocessors import DocumentSplitter
-from haystack_ai.components.converters import PyPDFToDocument
+from duckdb import DuckDBDocumentStore
+from haystack.components.embedders import SentenceTransformersDocumentEmbedder
+from haystack.components.preprocessors import DocumentSplitter
+from haystack.components.converters import PyPDFToDocument
 
 # --- 1. 경로 및 모델 설정 ---
 
