@@ -1,12 +1,10 @@
 import os
+import pickle
 from haystack import Pipeline
-# from haystack.components.generators import OpenAIGenerator  # OpenAI 
-from haystack.components.embedders import SentenceTransformersTextEmbedder, SentenceTransformersDocumentEmbedder  # Using sentence transformers for embedding
+from haystack.components.embedders import SentenceTransformersTextEmbedder, SentenceTransformersDocumentEmbedder
 from haystack.components.builders import PromptBuilder
-from duckdb import DuckDBDocumentStore
-from duckdb import DuckDBEmbeddingRetriever
-from haystack.components.embedders import SentenceTransformersTextEmbedder
-# from haystack.document_stores.in_memory import InMemoryDocumentStore
+from haystack.document_stores.in_memory import InMemoryDocumentStore
+from haystack.components.retrievers.in_memory import InMemoryEmbeddingRetriever
 from haystack.components.preprocessors import DocumentSplitter
 from haystack.components.converters import PyPDFToDocument
 import google.generativeai as genai
@@ -38,26 +36,41 @@ FIXED_FAQ_DATABASE = {
     # (여기에 5개의 Quick Reply 및 주요 FAQ 항목을 모두 추가하세요)
 }
 # --- 2. 경로 및 모델 설정 ---
-# (2) ✨ 중요: build_index.py와 동일한 모델/DB 경로 설정
-EMBEDDING_MODEL = "jhgan/ko-sbert-nli"
-DB_PATH = "hibot_store.db"
+# (2) ✨ 중요: build_index.py와 동일한 모델/저장소 경로 설정
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # build_index.py와 동일한 모델 사용
+# EMBEDDING_MODEL = "jhgan/ko-sbert-nli"  # 한국어 모델 (SSL 문제 해결 후 사용)
+STORE_PATH = "hibot_store.pkl"  # build_index.py와 동일한 저장소 경로
 # --- 3. [신규] RAG 파이프라인 "라우터" (Req 3) ---
 
 def initialize_chatbot():
     print("챗봇 초기화 중...")
     
-    # (A) 영구 저장소(DuckDB) 연결 (읽기 전용)
+    # (A) 영구 저장소 연결 (읽기 전용)
     try:
-        document_store = DuckDBDocumentStore(db_path=DB_PATH)
-        print(f"✅ '{DB_PATH}'에서 {document_store.count_documents()}개 문서를 불러왔습니다.")
+        if not os.path.exists(STORE_PATH):
+            print(f"❌ '{STORE_PATH}' 저장소 파일을 찾을 수 없습니다.")
+            print("먼저 'python build_index.py' 스크립트를 실행하여 문서를 색인해주세요.")
+            return None
+            
+        with open(STORE_PATH, 'rb') as f:
+            document_store = pickle.load(f)
+        print(f"✅ '{STORE_PATH}'에서 {document_store.count_documents()}개 문서를 불러왔습니다.")
     except Exception as e:
-        print(f"❌ '{DB_PATH}' DB 파일을 찾을 수 없습니다. {e}")
+        print(f"❌ '{STORE_PATH}' 저장소 파일 로드 실패: {e}")
         print("먼저 'python build_index.py' 스크립트를 실행하여 문서를 색인해주세요.")
         return None
 
-    # (B) RAG 파이프라인 준비 (기존 코드와 유사)
-    text_embedder = SentenceTransformersTextEmbedder(model=EMBEDDING_MODEL)
-    retriever = DuckDBEmbeddingRetriever(document_store=document_store, top_k=5)
+    # (B) RAG 파이프라인 준비 (SSL 오류 처리 포함)
+    try:
+        text_embedder = SentenceTransformersTextEmbedder(model=EMBEDDING_MODEL)
+        retriever = InMemoryEmbeddingRetriever(document_store=document_store, top_k=5)
+        print("✅ 임베더와 리트리버 초기화 완료")
+    except Exception as e:
+        print(f"❌ 임베더 초기화 실패: {e}")
+        print("📋 해결방법:")
+        print("   1. pip install --upgrade certifi")
+        print("   2. 인터넷 연결 확인")
+        return None
     
     prompt_template = """
     당신은 제공된 [문서] 내용을 바탕으로 답변하는 챗봇입니다.
@@ -76,14 +89,19 @@ def initialize_chatbot():
     prompt_builder = PromptBuilder(template=prompt_template)
     
     # (C) 검색 전용 파이프라인 구축 (생성기는 별도 처리)
-    search_pipeline = Pipeline()
-    search_pipeline.add_component("query_embedder", text_embedder)
-    search_pipeline.add_component("retriever", retriever)
-    search_pipeline.connect("query_embedder.embedding", "retriever.query_embedding")
-    text_embedder.warm_up()
-    
-    print("✅ 챗봇 RAG 파이프라인 준비 완료.")
-    return search_pipeline, prompt_builder
+    try:
+        search_pipeline = Pipeline()
+        search_pipeline.add_component("query_embedder", text_embedder)
+        search_pipeline.add_component("retriever", retriever)
+        search_pipeline.connect("query_embedder.embedding", "retriever.query_embedding")
+        
+        # 임베더 초기화 (SSL 오류 처리)
+        text_embedder.warm_up()
+        print("✅ 챗봇 RAG 파이프라인 준비 완료.")
+        return search_pipeline, prompt_builder
+    except Exception as e:
+        print(f"❌ 파이프라인 초기화 실패: {e}")
+        return None
 
 def create_gemini_response(prompt):
     """Gemini API를 직접 사용하여 응답을 생성하는 함수 (기존 코드)"""
