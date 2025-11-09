@@ -1,10 +1,12 @@
 import os
 import pickle
+import duckdb
+import json
+import numpy as np
 from haystack import Pipeline
 from haystack.components.embedders import SentenceTransformersTextEmbedder, SentenceTransformersDocumentEmbedder
 from haystack.components.builders import PromptBuilder
-from haystack.document_stores.in_memory import InMemoryDocumentStore
-from haystack.components.retrievers.in_memory import InMemoryEmbeddingRetriever
+from haystack.dataclasses import Document
 from haystack.components.preprocessors import DocumentSplitter
 from haystack.components.converters import PyPDFToDocument
 import google.generativeai as genai
@@ -37,33 +39,93 @@ FIXED_FAQ_DATABASE = {
 }
 # --- 2. 경로 및 모델 설정 ---
 # (2) ✨ 중요: build_index.py와 동일한 모델/저장소 경로 설정
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # build_index.py와 동일한 모델 사용
-# EMBEDDING_MODEL = "jhgan/ko-sbert-nli"  # 한국어 모델 (SSL 문제 해결 후 사용)
-STORE_PATH = "hibot_store.pkl"  # build_index.py와 동일한 저장소 경로
-# --- 3. [신규] RAG 파이프라인 "라우터" (Req 3) ---
+# EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # build_index.py와 동일한 모델 사용
+EMBEDDING_MODEL = "jhgan/ko-sbert-nli"  # 한국어 모델 (SSL 문제 해결 후 사용)
+DB_PATH = "hibot_store.db"  # build_index.py와 동일한 DuckDB 파일 경로
+
+# --- 3. Custom DuckDB Retriever Class ---
+class DuckDBEmbeddingRetriever:
+    """DuckDB에서 유사한 문서를 검색하는 커스텀 리트리버"""
+    
+    def __init__(self, db_path, top_k=5):
+        self.db_path = db_path
+        self.top_k = top_k
+        self.conn = None
+        
+    def connect(self):
+        """DuckDB 연결"""
+        if self.conn is None:
+            self.conn = duckdb.connect(self.db_path)
+    
+    def run(self, query_embedding):
+        """쿼리 임베딩과 유사한 문서들을 검색"""
+        self.connect()
+        
+        # 모든 문서와 임베딩을 가져옴
+        docs_data = self.conn.execute("""
+            SELECT id, content, meta, embedding 
+            FROM documents 
+            WHERE embedding IS NOT NULL
+        """).fetchall()
+        
+        if not docs_data:
+            return {"documents": []}
+        
+        # 코사인 유사도 계산
+        similarities = []
+        for doc_id, content, meta_str, embedding in docs_data:
+            if embedding:
+                # 코사인 유사도 계산
+                doc_embedding = np.array(embedding)
+                query_emb = np.array(query_embedding[0])  # query_embedding is a list
+                
+                similarity = np.dot(query_emb, doc_embedding) / (
+                    np.linalg.norm(query_emb) * np.linalg.norm(doc_embedding)
+                )
+                
+                try:
+                    meta = json.loads(meta_str) if meta_str else {}
+                except:
+                    meta = {}
+                
+                similarities.append((similarity, doc_id, content, meta))
+        
+        # 유사도 순으로 정렬하고 top_k만 선택
+        similarities.sort(reverse=True, key=lambda x: x[0])
+        top_docs = similarities[:self.top_k]
+        
+        # Document 객체 생성
+        documents = []
+        for similarity, doc_id, content, meta in top_docs:
+            doc = Document(id=doc_id, content=content, meta=meta)
+            documents.append(doc)
+        
+        return {"documents": documents}
+# --- 4. [신규] RAG 파이프라인 "라우터" (Req 3) ---
 
 def initialize_chatbot():
     print("챗봇 초기화 중...")
     
-    # (A) 영구 저장소 연결 (읽기 전용)
+    # (A) DuckDB 연결 확인
     try:
-        if not os.path.exists(STORE_PATH):
-            print(f"❌ '{STORE_PATH}' 저장소 파일을 찾을 수 없습니다.")
+        if not os.path.exists(DB_PATH):
+            print(f"❌ '{DB_PATH}' 데이터베이스 파일을 찾을 수 없습니다.")
             print("먼저 'python build_index.py' 스크립트를 실행하여 문서를 색인해주세요.")
             return None
             
-        with open(STORE_PATH, 'rb') as f:
-            document_store = pickle.load(f)
-        print(f"✅ '{STORE_PATH}'에서 {document_store.count_documents()}개 문서를 불러왔습니다.")
+        conn = duckdb.connect(DB_PATH)
+        doc_count = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+        conn.close()
+        print(f"✅ '{DB_PATH}'에서 {doc_count}개 문서를 확인했습니다.")
     except Exception as e:
-        print(f"❌ '{STORE_PATH}' 저장소 파일 로드 실패: {e}")
+        print(f"❌ '{DB_PATH}' 데이터베이스 연결 실패: {e}")
         print("먼저 'python build_index.py' 스크립트를 실행하여 문서를 색인해주세요.")
         return None
 
     # (B) RAG 파이프라인 준비 (SSL 오류 처리 포함)
     try:
         text_embedder = SentenceTransformersTextEmbedder(model=EMBEDDING_MODEL)
-        retriever = InMemoryEmbeddingRetriever(document_store=document_store, top_k=5)
+        retriever = DuckDBEmbeddingRetriever(db_path=DB_PATH, top_k=5)
         print("✅ 임베더와 리트리버 초기화 완료")
     except Exception as e:
         print(f"❌ 임베더 초기화 실패: {e}")
@@ -86,19 +148,14 @@ def initialize_chatbot():
 
     [답변]:
     """
-    prompt_builder = PromptBuilder(template=prompt_template)
+    prompt_builder = PromptBuilder(template=prompt_template, required_variables=["documents", "question"])
     
-    # (C) 검색 전용 파이프라인 구축 (생성기는 별도 처리)
+    # (C) 임베더 초기화 (SSL 오류 처리)
     try:
-        search_pipeline = Pipeline()
-        search_pipeline.add_component("query_embedder", text_embedder)
-        search_pipeline.add_component("retriever", retriever)
-        search_pipeline.connect("query_embedder.embedding", "retriever.query_embedding")
-        
         # 임베더 초기화 (SSL 오류 처리)
         text_embedder.warm_up()
         print("✅ 챗봇 RAG 파이프라인 준비 완료.")
-        return search_pipeline, prompt_builder
+        return text_embedder, retriever, prompt_builder
     except Exception as e:
         print(f"❌ 파이프라인 초기화 실패: {e}")
         return None
@@ -107,13 +164,13 @@ def create_gemini_response(prompt):
     """Gemini API를 직접 사용하여 응답을 생성하는 함수 (기존 코드)"""
     try:
         genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-pro')  # Updated model name
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         return f"Gemini API 호출 중 오류 발생: {str(e)}"
 
-def ask_chatbot(question, search_pipeline, prompt_builder):
+def ask_chatbot(question, text_embedder, retriever, prompt_builder):
     """
     (✨ 신규 로직)
     사용자 질문을 받아서 FAQ(규칙)를 먼저 확인하고, 
@@ -131,19 +188,22 @@ def ask_chatbot(question, search_pipeline, prompt_builder):
     # --- 2단계: RAG + LLM 응답 (Req 3) ---
     print("(규칙 기반 답변 없음. RAG 파이프라인 실행...)")
     try:
-        # (A) 관련 문서 검색
-        search_result = search_pipeline.run({"query_embedder": {"text": question}})
-        retrieved_docs = search_result["retriever"]["documents"]
+        # (A) 질문을 임베딩으로 변환
+        query_embedding_result = text_embedder.run(text=question)
+        query_embedding = query_embedding_result["embedding"]
+        
+        # (B) 관련 문서 검색
+        retrieved_docs = retriever.run(query_embedding=[query_embedding])["documents"]
         
         if not retrieved_docs:
             print("[답변] 🤖 (RAG): 죄송합니다. 문서에서 관련 내용을 찾지 못했습니다.")
             return "죄송합니다. 문서에서 관련 내용을 찾지 못했습니다."
 
-        # (B) 프롬프트 생성
+        # (C) 프롬프트 생성
         prompt_result = prompt_builder.run(documents=retrieved_docs, question=question)
         full_prompt = prompt_result["prompt"]
         
-        # (C) Gemini API로 답변 생성
+        # (D) Gemini API로 답변 생성
         answer = create_gemini_response(full_prompt)
         print(f"[답변] 🤖 (AI 생성): {answer}")
         return answer
@@ -153,21 +213,21 @@ def ask_chatbot(question, search_pipeline, prompt_builder):
         print(f"[오류] ❌: {error_msg}")
         return error_msg
 
-# --- 4. 챗봇 실행 ---
+# --- 5. 챗봇 실행 ---
 if __name__ == "__main__":
     # 챗봇 파이프라인 1회 초기화
     pipeline_components = initialize_chatbot()
     
     if pipeline_components:
-        search_pipeline, prompt_builder = pipeline_components
+        text_embedder, retriever, prompt_builder = pipeline_components
         
         # (테스트)
         
         # (1) FAQ 질문 (RAG 미사용)
-        ask_chatbot("연차 어떻게 사용하나요?", search_pipeline, prompt_builder)
+        ask_chatbot("연차 어떻게 사용하나요?", text_embedder, retriever, prompt_builder)
         
         # (2) 문서 기반 질문 (RAG 사용)
-        ask_chatbot("작년도 복무 규정 요약해줘.", search_pipeline, prompt_builder)
+        ask_chatbot("작년도 복무 규정 요약해줘.", text_embedder, retriever, prompt_builder)
         
         # (3) 문서에 없는 질문 (RAG 사용 -> 실패 응답)
-        ask_chatbot("하늘은 왜 파란가요?", search_pipeline, prompt_builder)
+        ask_chatbot("하늘은 왜 파란가요?", text_embedder, retriever, prompt_builder)
