@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware # CORS 미들웨어 추가
 from pydantic import BaseModel
+import asyncio
 
 # FastAPI 앱 생성
 app = FastAPI()
@@ -41,8 +42,8 @@ async def handle_chat(request: ChatRequest):
     
     # 4. 딕셔너리에서 답변 찾기
     # .get() 메소드를 사용하면, 키(질문)가 없을 경우 기본값(두 번째 인자)을 반환합니다.
-    bot_response = qa_database.get(user_message, "죄송합니다. 무슨 말인지 잘 모르겠어요.")
-    
+    bot_response = qa_database.get(user_message, "죄송합니다. 무슨 말인지 잘 모르겠어요.죄송합니다.")
+    await asyncio.sleep(2)
     # 5. 찾은 답변을 JSON 형태로 리액트에 반환
     return {"response": bot_response}
 
