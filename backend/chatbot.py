@@ -112,7 +112,7 @@ def initialize_chatbot():
             print(f"❌ '{DB_PATH}' 데이터베이스 파일을 찾을 수 없습니다.")
             print("먼저 'python build_index.py' 스크립트를 실행하여 문서를 색인해주세요.")
             return None
-            
+        
         conn = duckdb.connect(DB_PATH)
         doc_count = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
         conn.close()
@@ -124,7 +124,11 @@ def initialize_chatbot():
 
     # (B) RAG 파이프라인 준비 (SSL 오류 처리 포함)
     try:
+        # 한국어 문장을 숫자 벡터로 자동 변환해주는 모델을 로딩 
         text_embedder = SentenceTransformersTextEmbedder(model=EMBEDDING_MODEL)
+        # 임베딩 기반 검색기(semantic search engine)
+        # DuckDB 파일(hibot_store.db)에 접속해서 문서들의 임베딩(vector) 목록을 읽고 
+        # 질문의  임베딩과 코사인 유사도(similarity score)를 계산해서 가장 비슷한 문서 **5개(top_k=5)**를 반환함
         retriever = DuckDBEmbeddingRetriever(db_path=DB_PATH, top_k=5)
         print("✅ 임베더와 리트리버 초기화 완료")
     except Exception as e:
@@ -161,10 +165,10 @@ def initialize_chatbot():
         return None
 
 def create_gemini_response(prompt):
-    """Gemini API를 직접 사용하여 응답을 생성하는 함수 (기존 코드)"""
+    """Gemini API를 직접 사용하여 응답을 생성하는 함수 """
     try:
         genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
-        model = genai.GenerativeModel('gemini-1.5-pro')  # Updated model name
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')  # Updated to available model
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
@@ -190,6 +194,7 @@ def ask_chatbot(question, text_embedder, retriever, prompt_builder):
     try:
         # (A) 질문을 임베딩으로 변환
         query_embedding_result = text_embedder.run(text=question)
+        # retriever가 읽을 수 있도록 임베딩만 꺼내는 작업
         query_embedding = query_embedding_result["embedding"]
         
         # (B) 관련 문서 검색
@@ -227,7 +232,4 @@ if __name__ == "__main__":
         ask_chatbot("연차 어떻게 사용하나요?", text_embedder, retriever, prompt_builder)
         
         # (2) 문서 기반 질문 (RAG 사용)
-        ask_chatbot("작년도 복무 규정 요약해줘.", text_embedder, retriever, prompt_builder)
-        
-        # (3) 문서에 없는 질문 (RAG 사용 -> 실패 응답)
-        ask_chatbot("하늘은 왜 파란가요?", text_embedder, retriever, prompt_builder)
+        ask_chatbot("정보공개를 청구받은 부서는 며칠 내에 처리 해야해?", text_embedder, retriever, prompt_builder)
