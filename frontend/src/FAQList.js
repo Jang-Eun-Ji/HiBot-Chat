@@ -26,7 +26,7 @@ function FAQList({setChatHistory, isLoading, setIsLoading}) {
     };
 
     return (
-        < div className="flex md:flex-col flex-row md:w-[200px] w-full justify-around md:justify-start md:items-end gap-2" >
+        < div className="flex flex-col gap-4">
             {
                 faqList.map((faq, idx) => (
                     <button
