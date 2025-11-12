@@ -4,7 +4,8 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        momo: ['Nanum Gothic'], // ✅ 추가
+        gothic: ['Nanum Gothic'],
+        batang: ['Gowun Batang']
       },
       fontWeight: 400,
        keyframes: {

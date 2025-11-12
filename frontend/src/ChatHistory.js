@@ -8,7 +8,7 @@ function ChatHistory({ chatHistory }) {
   }, [chatHistory]);
 
   return (
-    <div className="w-full min-w-md h-[60vh] overflow-y-auto bg-slate-700 rounded-lg p-8 pb-0 shadow-md flex flex-col gap-8 font-momo">
+    <div className="w-full min-w-md h-[60vh] overflow-y-auto bg-white shadow-xl rounded-lg p-8 pb-0 flex flex-col gap-8 font-batang font-medium">
       {chatHistory.map((msg, index) => (
         <div
           key={index}
