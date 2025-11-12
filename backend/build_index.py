@@ -3,14 +3,14 @@ import os
 import argparse
 import json
 import duckdb
-import fitz  # PyMuPDF
-import pytesseract
-from PIL import Image
-import io
+import win32com.client
+import tempfile
 
 from haystack import Document
 from haystack.components.preprocessors import DocumentSplitter
 from haystack.components.embedders import SentenceTransformersDocumentEmbedder
+
+from extract_text.extract_hwpx_text import extract_text_from_hwpx
 
 
 # ------------------------------
@@ -18,7 +18,7 @@ from haystack.components.embedders import SentenceTransformersDocumentEmbedder
 # ------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "hibot_store.db")
-DATA_PATH = os.path.join(BASE_DIR, "../hibot-chat-docs-pdf")
+DATA_PATH = os.path.join(BASE_DIR, "../hibot-chat-docs-hwp")
 
 EMBEDDING_MODEL = "jhgan/ko-sbert-nli"
 
@@ -90,34 +90,62 @@ class DuckDBDocumentStore:
 
 
 # ------------------------------
-# 3. OCR 지원 PDF → Text 변환기
+# 3. HWP → Text 변환기
 # ------------------------------
-def extract_text_with_ocr(pdf_path):
-    doc = fitz.open(pdf_path)
-    full_text = ""
+def convert_hwp_to_hwpx(hwp_path):
+    """HWP 파일을 임시 HWPX 파일로 변환"""
+    try:
+        hwp = win32com.client.Dispatch("HWPFrame.HwpObject")
+        
+        # 임시 HWPX 파일 경로 생성
+        temp_dir = tempfile.gettempdir()
+        hwpx_filename = os.path.splitext(os.path.basename(hwp_path))[0] + ".hwpx"
+        hwpx_path = os.path.join(temp_dir, hwpx_filename)
+        
+        # HWP 파일 열기
+        hwp.Open(hwp_path, "HWP", "forceopen:true")
+        
+        # HWPX 형식으로 저장
+        hwp.SaveAs(hwpx_path, "HWPX", "version:1.0")
+        
+        # 문서 닫기
+        hwp.XHwpDocuments.Close(isDirty=False)
+        hwp.Quit()
+        
+        return hwpx_path
+    except Exception as e:
+        print(f"❌ HWP → HWPX 변환 실패 ({hwp_path}): {e}")
+        return None
 
-    for page in doc:
-        # (1) 일반 텍스트 추출
-        full_text += page.get_text("text") + "\n"
-
-        # (2) 이미지 OCR 처리
-        for img in page.get_images(full=True):
-            xref = img[0]
-            base = doc.extract_image(xref)
-            image_bytes = base["image"]
-
-            image = Image.open(io.BytesIO(image_bytes))
-            ocr_text = pytesseract.image_to_string(image, lang="kor+eng")
-            full_text += ocr_text + "\n"
-
-    return full_text
+def extract_text_from_hwp(hwp_path):
+    """HWP 파일에서 텍스트 추출"""
+    # HWP → HWPX 변환
+    hwpx_path = convert_hwp_to_hwpx(hwp_path)
+    if not hwpx_path:
+        return ""
+    
+    try:
+        # HWPX에서 텍스트 추출
+        text = extract_text_from_hwpx(hwpx_path)
+        
+        # 임시 파일 정리
+        if os.path.exists(hwpx_path):
+            os.remove(hwpx_path)
+        
+        return text
+    except Exception as e:
+        print(f"❌ HWPX 텍스트 추출 실패 ({hwpx_path}): {e}")
+        # 임시 파일 정리
+        if os.path.exists(hwpx_path):
+            os.remove(hwpx_path)
+        return ""
 
 
 # ------------------------------
-# 4. PDF → Haystack Document 변환
+# 4. HWP → Haystack Document 변환
 # ------------------------------
-def convert_pdf_to_documents(pdf_path, file_name):
-    text = extract_text_with_ocr(pdf_path)
+def convert_hwp_to_documents(hwp_path, file_name):
+    text = extract_text_from_hwp(hwp_path)
     return [
         Document(
             content=text,
@@ -145,21 +173,21 @@ def main(force_rebuild=False):
     existing_docs = store.filter_documents()
     indexed_files = {d.meta.get("file_name") for d in existing_docs if d.meta.get("file_name")}
 
-    print(f"✅ DB에 기록된 PDF 파일 수: {len(indexed_files)}")
+    print(f"✅ DB에 기록된 HWP 파일 수: {len(indexed_files)}")
 
-    # 실제 폴더에 존재하는 PDF 목록
+    # 실제 폴더에 존재하는 HWP 목록
     if not os.path.exists(DATA_PATH):
-        print("❌ PDF 폴더가 없습니다:", DATA_PATH)
+        print("❌ HWP 폴더가 없습니다:", DATA_PATH)
         return
 
-    pdf_files = {f for f in os.listdir(DATA_PATH) if f.endswith(".pdf")}
-    new_files = pdf_files - indexed_files
+    hwp_files = {f for f in os.listdir(DATA_PATH) if f.lower().endswith(".hwp")}
+    new_files = hwp_files - indexed_files
 
     if not new_files:
-        print("✅ 새로 색인할 PDF 파일이 없습니다.")
+        print("✅ 새로 색인할 HWP 파일이 없습니다.")
         return
 
-    print(f"🚨 새 PDF 발견 → {len(new_files)}개 색인 시작: {list(new_files)}")
+    print(f"🚨 새 HWP 발견 → {len(new_files)}개 색인 시작: {list(new_files)}")
 
     # 문서 분할기
     splitter = DocumentSplitter(split_by="sentence", split_length=5)
@@ -173,10 +201,10 @@ def main(force_rebuild=False):
     for file_name in new_files:
         print(f"📄 처리 중: {file_name}")
 
-        pdf_path = os.path.join(DATA_PATH, file_name)
+        hwp_path = os.path.join(DATA_PATH, file_name)
 
-        # (1) OCR 포함 PDF → Document 변환
-        docs = convert_pdf_to_documents(pdf_path, file_name)
+        # (1) HWP → Document 변환
+        docs = convert_hwp_to_documents(hwp_path, file_name)
 
         # (2) 문장 단위 chunking
         split_docs = splitter.run(docs)["documents"]
@@ -187,7 +215,7 @@ def main(force_rebuild=False):
         # (4) DB 저장
         store.write_documents(embedded_docs)
 
-    print("✅ 모든 새 PDF 색인이 완료되었습니다.")
+    print("✅ 모든 새 HWP 색인이 완료되었습니다.")
     print("📊 총 문서 수:", store.count_documents())
 
 
