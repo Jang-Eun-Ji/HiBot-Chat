@@ -12,6 +12,14 @@ from haystack.components.converters import PyPDFToDocument
 import google.generativeai as genai
 from dotenv import load_dotenv
 
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+
+text_embedder = None
+retriever = None
+prompt_builder = None
+
+
 # --- 0. [필수] API 키 설정 ---
 # .env 파일에서 환경변수 로드
 load_dotenv()
@@ -24,6 +32,16 @@ if google_api_key:
 else:
     print("⚠️  경고: GOOGLE_API_KEY가 설정되지 않았습니다.")
     # (API 키가 없어도 FAQ 기능은 작동합니다)
+    
+    
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # React(3000) 접근 허용
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- 1. [신규] 규칙 기반 FAQ 데이터베이스 (Req 1 & 2) ---
 # 기획안의 "Quick Reply" 및 "FAQ 자동 응답"용
@@ -138,9 +156,9 @@ def initialize_chatbot():
         return None
     
     prompt_template = """
-    당신은 제공된 [문서] 내용을 바탕으로 답변하는 챗봇입니다.
-    오직 [문서]에 있는 내용만을 근거로 사용자의 [질문]에 대해 대답해주세요.
-    [문서]에 관련 내용이 없다면, "죄송합니다. 해당 문서에는 관련 내용이 없습니다."라고 정확하게 답변하세요.
+    넌 제공된 [문서] 내용을 바탕으로 답변하는 챗봇이다.
+    오직 [문서]에 있는 내용만을 근거로 [질문]에 대해 대답해.
+    [문서]에 관련 내용이 없다면, "죄송합니다. 해당 문서에는 관련 내용이 없습니다."라고 정확하게 답변해.
 
     [문서]:
     {% for doc in documents %}
@@ -217,18 +235,52 @@ def ask_chatbot(question, text_embedder, retriever, prompt_builder):
         print(f"[오류] ❌: {error_msg}")
         return error_msg
 
-# --- 5. 챗봇 실행 ---
-if __name__ == "__main__":
-    # 챗봇 파이프라인 1회 초기화
-    pipeline_components = initialize_chatbot()
+# --- 5. 백엔드 테스트용 챗봇 실행 ---
+# if __name__ == "__main__":
+#     # 챗봇 파이프라인 1회 초기화
+#     pipeline_components = initialize_chatbot()
     
+#     if pipeline_components:
+#         text_embedder, retriever, prompt_builder = pipeline_components
+        
+#         # (테스트)
+        
+#         # (1) FAQ 질문 (RAG 미사용)
+#         ask_chatbot("연차 어떻게 사용하나요?", text_embedder, retriever, prompt_builder)
+        
+#         # (2) 문서 기반 질문 (RAG 사용)
+#         ask_chatbot("정보공개를 청구받은 부서는 며칠 내에 처리 해야해?", text_embedder, retriever, prompt_builder)
+
+@app.on_event("startup")
+def startup_event():
+    global text_embedder, retriever, prompt_builder
+    pipeline_components = initialize_chatbot()
     if pipeline_components:
         text_embedder, retriever, prompt_builder = pipeline_components
-        
-        # (테스트)
-        
-        # (1) FAQ 질문 (RAG 미사용)
-        ask_chatbot("연차 어떻게 사용하나요?", text_embedder, retriever, prompt_builder)
-        
-        # (2) 문서 기반 질문 (RAG 사용)
-        ask_chatbot("정보공개를 청구받은 부서는 며칠 내에 처리 해야해?", text_embedder, retriever, prompt_builder)
+
+
+@app.post("/api/chat")
+async def chat(request: Request):
+    global text_embedder, retriever, prompt_builder
+    data = await request.json()
+    question = data.get("message", "")
+    print(f"💬 사용자 질문: {question}")
+
+    # 1️⃣ 규칙 기반 FAQ 먼저 확인
+    for keyword, answer in FIXED_FAQ_DATABASE.items():
+        if keyword in question:
+            return {"response": answer}
+
+    # 2️⃣ RAG + Gemini 호출
+    try:
+        query_emb = text_embedder.run(text=question)["embedding"]
+        docs = retriever.run(query_embedding=[query_emb])["documents"]
+
+        if not docs:
+            return {"response": "죄송합니다. 문서에서 관련 내용을 찾지 못했습니다."}
+
+        prompt = prompt_builder.run(documents=docs, question=question)["prompt"]
+        answer = create_gemini_response(prompt)
+        return {"response": answer}
+    except Exception as e:
+        return {"response": f"서버 오류 발생: {str(e)}"}
