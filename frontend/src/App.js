@@ -1,82 +1,56 @@
-import React, { useState } from 'react';
-import './App.css';
+import React, { useState } from "react";
+import "./App.css";
+import Input from "./Input";
+import ChatHistory from "./ChatHistory";
+import FAQList from "./FAQList";
+import FAQButton from "./FAQButton";
 
 function App() {
-  // 현재 입력창의 메시지
-  const [currentMessage, setCurrentMessage] = useState('');
-  // 전체 대화 내역 (배열)
   const [chatHistory, setChatHistory] = useState([]);
-
-  // 메시지 전송 처리 함수
-  const handleSubmit = async (e) => {
-    e.preventDefault(); // 폼 전송 시 페이지 새로고침 방지
-    
-    const userMessage = currentMessage.trim();
-    if (!userMessage) return; // 빈 메시지는 전송하지 않음
-
-    // 1. 사용자 메시지를 대화 내역에 추가
-    setChatHistory(prevHistory => [
-      ...prevHistory,
-      { sender: 'user', text: userMessage }
-    ]);
-
-    // 2. 입력창 비우기
-    setCurrentMessage('');
-
-    try {
-      // 3. 백엔드 API에 사용자 메시지 전송 (POST)
-      const response = await fetch('http://localhost:8000/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: userMessage }), // JSON 형태로 전송
-      });
-
-      const data = await response.json();
-      
-      // 4. 백엔드에서 받은 봇의 응답을 대화 내역에 추가
-      setChatHistory(prevHistory => [
-        ...prevHistory,
-        { sender: 'bot', text: data.response }
-      ]);
-
-    } catch (error) {
-      console.error('챗봇 응답 오류:', error);
-      // 5. 오류 발생 시
-      setChatHistory(prevHistory => [
-        ...prevHistory,
-        { sender: 'bot', text: '오류가 발생했습니다. 서버를 확인해주세요.' }
-      ]);
-    }
-  };
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFAQOpen, setIsFAQOpen] = useState(false);
 
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>FAQ 챗봇</h1>
-        
-        {/* 채팅 내역이 표시될 창 */}
-        <div className="chat-window">
-          {chatHistory.map((msg, index) => (
-            <div key={index} className={`message ${msg.sender}`}>
-              <p>{msg.text}</p>
-            </div>
-          ))}
+    <div className="h-screen bg-slate-600 flex flex-col justify-center items-center relative">
+      <h1 className="text-2xl font-bold text-white mb-6">하이봇</h1>
+
+      <div className="flex flex-col xl:flex-row w-[80%] min-w-[600px] gap-4 relative">
+        <div className="flex-1 flex flex-col gap-4">
+          <ChatHistory chatHistory={chatHistory} />
+          <Input
+            setChatHistory={setChatHistory}
+            isLoading={isLoading}
+            setIsLoading={setIsLoading}
+          />
         </div>
 
-        {/* 메시지 입력 폼 */}
-        <form className="chat-input-form" onSubmit={handleSubmit}>
-          <input
-            type="text"
-            value={currentMessage}
-            onChange={(e) => setCurrentMessage(e.target.value)}
-            placeholder="질문을 입력하세요..."
+        <div className="hidden xl:block">
+          <FAQList
+            setChatHistory={setChatHistory}
+            isLoading={isLoading}
+            setIsLoading={setIsLoading}
           />
-          <button type="submit">전송</button>
-        </form>
+        </div>
 
-      </header>
+        {/* ✅ 좁은 화면: 아이콘 버튼 + 팝업 FAQ */}
+        <div className="block xl:hidden fixed bottom-6 right-6 z-50">
+          <div className="relative flex flex-col items-end">
+            {/* 팝업 리스트 — 아이콘 바로 위 */}
+            {isFAQOpen && (
+              <div className="absolute bottom-full mb-3 bg-white rounded-lg shadow-lg w-64 p-4 z-40">
+                <FAQList
+                  setChatHistory={setChatHistory}
+                  isLoading={isLoading}
+                  setIsLoading={setIsLoading}
+                />
+              </div>
+            )}
+
+            {/* 아이콘 버튼 */}
+            <FAQButton setIsFAQOpen={setIsFAQOpen} isFAQOpen={isFAQOpen} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

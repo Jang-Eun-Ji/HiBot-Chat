@@ -21,7 +21,6 @@
   align-items: center;
   justify-content: center;
   font-size: calc(10px + 2vmin);
-  color: white;
 }
 
 .App-link {
@@ -36,3 +35,10 @@
     transform: rotate(360deg);
   }
 }
+
+.message::-webkit-scrollbar {
+  display: none;
+}
+
+
+@import url('https://fonts.googleapis.com/css2?family=Momo+Trust+Display&family=Nanum+Gothic&display=swap');
