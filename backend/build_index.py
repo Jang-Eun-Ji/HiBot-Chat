@@ -23,7 +23,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "hibot_store.db")
 DATA_PATH = os.path.join(BASE_DIR, "../hibot-chat-docs-hwp")
 
-EMBEDDING_MODEL = "jhgan/ko-sbert-nli"
+EMBEDDING_MODEL = "./models/models--jhgan--ko-sbert-nli/snapshots/b78c95e43b7ef3f8a7cca8b287367ba57516a5bf"
 
 
 # ------------------------------
@@ -111,24 +111,24 @@ def main(force_rebuild=False):
     existing_docs = store.filter_documents()
     indexed_files = {d.meta.get("file_name") for d in existing_docs if d.meta.get("file_name")}
 
-    print(f"✅ DB에 기록된 PDF 파일 수: {len(indexed_files)}")
+    print(f"✅ DB에 기록된 HWP 파일 수: {len(indexed_files)}")
 
-    # 실제 폴더에 존재하는 PDF 목록
+    # 실제 폴더에 존재하는 HWP 목록
     if not os.path.exists(DATA_PATH):
-        print("❌ PDF 폴더가 없습니다:", DATA_PATH)
+        print("❌ HWP 폴더가 없습니다:", DATA_PATH)
         return
 
     
-    # pdf_files = {f for f in os.listdir(DATA_PATH) if f.endswith(".pdf")}
-    # new_files = pdf_files - indexed_files
+    # HWP_files = {f for f in os.listdir(DATA_PATH) if f.endswith(".HWP")}
+    # new_files = HWP_files - indexed_files
     hwp_files = {f for f in os.listdir(DATA_PATH) if f.endswith(".hwp")}
     new_files = hwp_files - indexed_files
 
     if not new_files:
-        print("✅ 새로 색인할 PDF 파일이 없습니다.")
+        print("✅ 새로 색인할 HWP 파일이 없습니다.")
         return
 
-    print(f"🚨 새 PDF 발견 → {len(new_files)}개 색인 시작: {list(new_files)}")
+    print(f"🚨 새 HWP 발견 → {len(new_files)}개 색인 시작: {list(new_files)}")
 
     # 문서 분할기
     splitter = DocumentSplitter(split_by="sentence", split_length=5)
@@ -161,7 +161,7 @@ def main(force_rebuild=False):
         # (4) DB 저장
         store.write_documents(embedded_docs)
 
-    print("✅ 모든 새 PDF 색인이 완료되었습니다.")
+    print("✅ 모든 새 HWP 색인이 완료되었습니다.")
     print("📊 총 문서 수:", store.count_documents())
 
 
