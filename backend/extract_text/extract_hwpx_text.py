@@ -19,18 +19,17 @@ def extract_text_from_hwpx(hwpx_path):
 
     texts = []
 
-    # 문단 추출
-    for p in root.iter(f"{{{NS['hp']}}}p"):
-        t_list = [t.text.strip() for t in p.iter(f"{{{NS['hp']}}}t") if t.text]
-        if t_list:
-            texts.append("".join(t_list))
+    # 모든 텍스트 요소 직접 추출 (더 정확함)
+    for t in root.iter(f"{{{NS['hp']}}}t"):
+        if t.text and t.text.strip():
+            texts.append(t.text.strip())
 
-    # 표 추출
+    # 표 추출 (별도로 처리하여 테이블 구조 유지)
     for table in root.iter(f"{{{NS['hp']}}}tbl"):
         for tr in table.iter(f"{{{NS['hp']}}}tr"):
             row = []
             for tc in tr.iter(f"{{{NS['hp']}}}tc"):
-                cell_texts = [t.text.strip() for t in tc.iter(f"{{{NS['hp']}}}t") if t.text]
+                cell_texts = [t.text.strip() for t in tc.iter(f"{{{NS['hp']}}}t") if t.text and t.text.strip()]
                 if cell_texts:
                     row.append(" ".join(cell_texts))
             if row:
