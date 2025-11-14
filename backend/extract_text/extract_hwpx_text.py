@@ -52,6 +52,6 @@ def extract_all_hwpx(input_dir, output_dir):
         print(f"✅ 변환 완료: {f}")
 
 if __name__ == "__main__":
-    input_dir = r"C:\company_rules_hwpx"
-    output_dir = r"C:\company_rules_text"
+    input_dir = r"/hibot-chat-docs-hwpx"
+    output_dir = r"/hibot-chat-docs-text"
     extract_all_hwpx(input_dir, output_dir)

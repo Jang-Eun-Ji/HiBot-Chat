@@ -3,22 +3,25 @@ import os
 import argparse
 import json
 import duckdb
-import fitz  # PyMuPDF
-import pytesseract
-from PIL import Image
-import io
+# import fitz  # PyMuPDF
+# import pytesseract
+# from PIL import Image
+# import io
 
 from haystack import Document
 from haystack.components.preprocessors import DocumentSplitter
 from haystack.components.embedders import SentenceTransformersDocumentEmbedder
 
+# hwp변환 
+from extract_text.hwpToHwpx import convert_hwp_to_hwpx
+from extract_text.extract_hwpx_text import extract_text_from_hwpx
 
 # ------------------------------
 # 1. 경로 설정
 # ------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "hibot_store.db")
-DATA_PATH = os.path.join(BASE_DIR, "../hibot-chat-docs-pdf")
+DATA_PATH = os.path.join(BASE_DIR, "../hibot-chat-docs-hwp")
 
 EMBEDDING_MODEL = "jhgan/ko-sbert-nli"
 
@@ -90,43 +93,6 @@ class DuckDBDocumentStore:
 
 
 # ------------------------------
-# 3. OCR 지원 PDF → Text 변환기
-# ------------------------------
-def extract_text_with_ocr(pdf_path):
-    doc = fitz.open(pdf_path)
-    full_text = ""
-
-    for page in doc:
-        # (1) 일반 텍스트 추출
-        full_text += page.get_text("text") + "\n"
-
-        # (2) 이미지 OCR 처리
-        for img in page.get_images(full=True):
-            xref = img[0]
-            base = doc.extract_image(xref)
-            image_bytes = base["image"]
-
-            image = Image.open(io.BytesIO(image_bytes))
-            ocr_text = pytesseract.image_to_string(image, lang="kor+eng")
-            full_text += ocr_text + "\n"
-
-    return full_text
-
-
-# ------------------------------
-# 4. PDF → Haystack Document 변환
-# ------------------------------
-def convert_pdf_to_documents(pdf_path, file_name):
-    text = extract_text_with_ocr(pdf_path)
-    return [
-        Document(
-            content=text,
-            meta={"file_name": file_name}
-        )
-    ]
-
-
-# ------------------------------
 # 5. 메인 색인 로직
 # ------------------------------
 def main(force_rebuild=False):
@@ -152,8 +118,11 @@ def main(force_rebuild=False):
         print("❌ PDF 폴더가 없습니다:", DATA_PATH)
         return
 
-    pdf_files = {f for f in os.listdir(DATA_PATH) if f.endswith(".pdf")}
-    new_files = pdf_files - indexed_files
+    
+    # pdf_files = {f for f in os.listdir(DATA_PATH) if f.endswith(".pdf")}
+    # new_files = pdf_files - indexed_files
+    hwp_files = {f for f in os.listdir(DATA_PATH) if f.endswith(".hwp")}
+    new_files = hwp_files - indexed_files
 
     if not new_files:
         print("✅ 새로 색인할 PDF 파일이 없습니다.")
@@ -173,10 +142,15 @@ def main(force_rebuild=False):
     for file_name in new_files:
         print(f"📄 처리 중: {file_name}")
 
-        pdf_path = os.path.join(DATA_PATH, file_name)
+        hwp_path = os.path.join(DATA_PATH, file_name)
 
-        # (1) OCR 포함 PDF → Document 변환
-        docs = convert_pdf_to_documents(pdf_path, file_name)
+        # (1) HWP → HWPX 변환
+        hwpx_path = convert_hwp_to_hwpx(hwp_path)
+
+        # (2) HWPX → TEXT 추출
+        text = extract_text_from_hwpx(hwpx_path)
+
+        docs = [Document(content=text, meta={"file_name": file_name})]
 
         # (2) 문장 단위 chunking
         split_docs = splitter.run(docs)["documents"]
