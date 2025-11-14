@@ -1,10 +1,4 @@
-// ✅ FAQ 리스트
-const faqList = [
-    "회원가입은 어떻게 하나요?",
-    "비밀번호를 잊어버렸어요.",
-    "서비스 요금은 얼마인가요?",
-    "고객센터 운영시간이 궁금해요.",
-];
+import { faqList } from "./constants";
 
 function FAQList({ setChatHistory, isLoading, setIsLoading }) {
     const handleFAQClick = (question) => {
@@ -26,19 +20,19 @@ function FAQList({ setChatHistory, isLoading, setIsLoading }) {
     };
 
     return (
-            < div className="flex flex-col gap-4">
-                {
-                    faqList.map((faq, idx) => (
-                        <button
-                            key={idx}
-                            onClick={() => handleFAQClick(faq)}
-                            className="bg-white text-slate-700 font-semibold px-3 py-2 rounded-xl shadow hover:bg-slate-100 transition"
-                        >
-                            {faq}
-                        </button>
-                    ))
-                }
-            </div >
+        < div className="flex flex-col gap-4">
+            {
+                faqList.map((faq, idx) => (
+                    <button
+                        key={idx}
+                        onClick={() => handleFAQClick(faq)}
+                        className="bg-white text-slate-700 font-semibold px-3 py-2 rounded-xl shadow hover:bg-slate-100 transition"
+                    >
+                        {faq}
+                    </button>
+                ))
+            }
+        </div >
     )
 };
 
