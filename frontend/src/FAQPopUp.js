@@ -4,7 +4,7 @@ import FAQList from "./FAQList";
 
 function FAQPopUp({ isFAQOpen, setIsFAQOpen, setChatHistory, isLoading, setIsLoading }) {
     return (
-        <div className="block xl:hidden fixed bottom-6 right-6 z-50">
+        <div className="block xl:hidden fixed bottom-6 right-6 z-50 scale-50 sm:scale-75 md:scale-100">
             <div className="relative flex flex-col items-end">
                 <AnimatePresence>
                     {isFAQOpen && (
