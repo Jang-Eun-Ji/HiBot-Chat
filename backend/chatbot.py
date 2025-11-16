@@ -1,14 +1,10 @@
 import os
-import pickle
 import duckdb
 import json
 import numpy as np
-from haystack import Pipeline
-from haystack.components.embedders import SentenceTransformersTextEmbedder, SentenceTransformersDocumentEmbedder
+from haystack.components.embedders import SentenceTransformersTextEmbedder
 from haystack.components.builders import PromptBuilder
 from haystack.dataclasses import Document
-from haystack.components.preprocessors import DocumentSplitter
-from haystack.components.converters import PyPDFToDocument
 import google.generativeai as genai
 from dotenv import load_dotenv
 
