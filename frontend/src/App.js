@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import "./App.css";
 import Input from "./input";
 import ChatHistory from "./ChatHistory";
@@ -14,8 +14,8 @@ function App() {
   return (
     <div className="h-screen bg-slate-200 flex flex-col justify-center items-center relative">
       <Logo />
-      <div className="flex flex-col xl:flex-row w-[80%] min-w-[600px] gap-4 relative">
-        <div className="flex-1 flex flex-col gap-4">
+      <div className="flex flex-col items-center justify-center xl:flex-row w-[80%] min-w-[300px] gap-4 relative">
+        <div className="w-[80%] flex-1 flex flex-col gap-4">
           <ChatHistory chatHistory={chatHistory} />
           <Input
             setChatHistory={setChatHistory}
