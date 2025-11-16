@@ -24,8 +24,6 @@ prompt_builder = None
 # .env 파일에서 환경변수 로드
 load_dotenv()
 
-# 환경변수에서 API 키 가져오기
-load_dotenv()
 google_api_key = os.getenv("GOOGLE_API_KEY")
 if google_api_key:
     os.environ["GOOGLE_API_KEY"] = google_api_key
