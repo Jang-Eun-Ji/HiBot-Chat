@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import "./App.css";
-import Input from "./Input";
+import Input from "./input";
 import ChatHistory from "./ChatHistory";
 import FAQList from "./FAQList";
 import FAQPopUp from "./FAQPopUp";

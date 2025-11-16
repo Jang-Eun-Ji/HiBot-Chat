@@ -6,15 +6,19 @@ function FAQList({ setChatHistory, isLoading, setIsLoading }) {
         setChatHistory((prev) => [
             ...prev,
             { sender: "user", text: question },
-            { sender: "bot", text: "응답을 불러오는 중이에요..." },
         ]);
         setIsLoading(true);
+        setChatHistory(prevHistory => [
+            ...prevHistory,
+            { sender: 'bot', text: "", isLoading: true }
+        ]);
         // 예시로 2초 후 응답 추가 (실제는 API 요청)
         setTimeout(() => {
-            setChatHistory((prev) => [
-                ...prev.slice(0, -1),
-                { sender: "bot", text: `“${question}”에 대한 답변입니다!` },
-            ]);
+            setChatHistory((prev) => {
+                const newHistory = [...prev];
+                newHistory[newHistory.length - 1] = { sender: "bot", text: `“${question}”에 대한 답변입니다!` };
+                return newHistory;
+            });
             setIsLoading(false);
         }, 2000);
     };
