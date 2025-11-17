@@ -31,14 +31,10 @@ else:
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-     allow_origins=[
-        "https://hibotchat.vercel.app",
-        "http://localhost:3000",
-    ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],      # 모든 도메인 허용
+    allow_credentials=False,  
+    allow_methods=["*"],      # 모든 HTTP 메서드 허용
+    allow_headers=["*"],      # 모든 헤더 허용
 )
 
 # --- 1. [신규] 규칙 기반 FAQ 데이터베이스 (Req 1 & 2) ---
