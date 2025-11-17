@@ -31,7 +31,7 @@ else:
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # React(3000) 접근 허용
+    allow_origins=["https://hibotchat.vercel.app"],  # React(3000) 접근 허용
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
