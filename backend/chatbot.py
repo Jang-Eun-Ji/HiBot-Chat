@@ -31,8 +31,9 @@ else:
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
+     allow_origins=[
         "https://hibotchat.vercel.app",
+        "http://localhost:3000",
     ],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
