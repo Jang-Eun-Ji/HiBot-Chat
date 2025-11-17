@@ -25,7 +25,7 @@ function Input({ setChatHistory, isLoading, setIsLoading }) {
         ]);
         try {
             // 3. 백엔드 API에 사용자 메시지 전송 (POST)
-            const response = await fetch('http://localhost:8000/api/chat', {
+            const response = await fetch('https://hibot-chat-production.up.railway.app/api/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -1,28 +1,45 @@
-// ✅ FAQ 리스트
-const faqList = [
-    "회원가입은 어떻게 하나요?",
-    "비밀번호를 잊어버렸어요.",
-    "서비스 요금은 얼마인가요?",
-    "고객센터 운영시간이 궁금해요.",
-];
+import { faqList } from "./constants";
 
-function FAQList({setChatHistory, isLoading, setIsLoading}) {
-    const handleFAQClick = (question) => {
-        if(isLoading) return;
+function FAQList({ setChatHistory, isLoading, setIsLoading }) {
+    const handleFAQClick = async (question, num) => {
+        if (isLoading) return;
         setChatHistory((prev) => [
             ...prev,
             { sender: "user", text: question },
-            { sender: "bot", text: "응답을 불러오는 중이에요..." },
         ]);
         setIsLoading(true);
-        // 예시로 2초 후 응답 추가 (실제는 API 요청)
-        setTimeout(() => {
-            setChatHistory((prev) => [
-                ...prev.slice(0, -1),
-                { sender: "bot", text: `“${question}”에 대한 답변입니다!` },
-            ]);
+        setChatHistory(prevHistory => [
+            ...prevHistory,
+            { sender: 'bot', text: "", isLoading: true }
+        ]);
+
+        try {
+            const response = await fetch('https://hibot-chat-production.up.railway.app/api/faq', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ faq_number: num }), // faq각각에 해당하는 번호를 전송
+            });
+
+            const data = await response.json();
+
+            setChatHistory(prevHistory => {
+                const newHistory = [...prevHistory];
+                newHistory[newHistory.length - 1] = { sender: 'bot', text: data.response };
+                return newHistory;
+            });
             setIsLoading(false);
-        }, 2000);
+        } catch (error) {
+            console.error('챗봇 응답 오류:', error);
+            // 5. 오류 발생 시
+            setChatHistory(prevHistory => {
+                const newHistory = [...prevHistory];
+                newHistory[newHistory.length - 1] = { sender: 'bot', text: '오류가 발생했습니다. 서버를 확인해주세요.' };
+                return newHistory;
+            });
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -31,7 +48,7 @@ function FAQList({setChatHistory, isLoading, setIsLoading}) {
                 faqList.map((faq, idx) => (
                     <button
                         key={idx}
-                        onClick={() => handleFAQClick(faq)}
+                        onClick={() => handleFAQClick(faq, idx)}
                         className="bg-white text-slate-700 font-semibold px-3 py-2 rounded-xl shadow hover:bg-slate-100 transition"
                     >
                         {faq}

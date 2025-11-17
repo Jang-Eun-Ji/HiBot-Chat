@@ -8,7 +8,7 @@ function ChatHistory({ chatHistory }) {
   }, [chatHistory]);
 
   return (
-    <div className="w-full min-w-md h-[60vh] overflow-y-auto bg-slate-700 rounded-lg p-8 pb-0 shadow-md flex flex-col gap-8 font-momo">
+    <div className="w-full h-[60vh] overflow-y-auto bg-white shadow-xl rounded-lg p-8 pb-0 flex flex-col gap-8 font-batang font-medium">
       {chatHistory.map((msg, index) => (
         <div
           key={index}
@@ -16,10 +16,13 @@ function ChatHistory({ chatHistory }) {
             }`}
         >
           <div
-            className={`max-w-[70%] px-4 py-3 rounded-xl opacity-0 animate-[fadeInUp_0.5s_ease-out_forwards] ${msg.sender === "user"
-                ? "bg-blue-500 text-white self-end"
-                : "bg-gray-300 text-gray-900 self-start"
-              }`}
+            className={`max-w-[70%] px-4 py-3 rounded-xl opacity-0 
+            animate-[fadeInUp_0.5s_ease-out_forwards]
+            text-sm sm:text-[16px]
+            ${msg.sender === "user"
+              ? "bg-blue-500 text-white self-end"
+              : "bg-gray-300 text-gray-900 self-start"
+            }`}
           >
             {msg.isLoading ? (
               <div className="flex items-center justify-center gap-2 w-12">
