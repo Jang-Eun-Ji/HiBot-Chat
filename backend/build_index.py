@@ -162,7 +162,12 @@ def main(force_rebuild=False):
     print(f"🚨 새 PDF 발견 → {len(new_files)}개 색인 시작: {list(new_files)}")
 
     # 문서 분할기
-    splitter = DocumentSplitter(split_by="sentence", split_length=5)
+    splitter = DocumentSplitter(
+        split_by="word",
+        split_length=700,
+        split_overlap=150
+    )
+
     splitter.warm_up()
 
     # 문서 임베딩 모델
