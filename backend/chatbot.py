@@ -50,6 +50,15 @@ FIXED_FAQ_DATABASE = [
     "전산기기 및 사무기기(PC, 복합기, 세단기 등)는 기기 중간 또는 하단에 부착된 수리기사 연락처로 직접 유선 문의하시면 됩니다. 기타 시설물(조명, 의자, 문손잡이 등) 고장은 경영지원부 물품관리 담당자에게 연락해 주시기 바랍니다."
 ]
 
+FAQ_KEYWORDS = [
+    ["시간외근무", "시간 외 근무", "연장근무"],
+    ["가족수당", "가족 수당"],
+    ["복지포인트", "복지 포인트"],
+    ["출장", "여비정산", "정산"],
+    ["전산장비", "PC", "프린터", "시설물", "고장"]
+]
+
+
 # --- 2. 경로 및 모델 설정 ---
 # (2) ✨ 중요: build_index.py와 동일한 모델/저장소 경로 설정
 # EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # build_index.py와 동일한 모델 사용
@@ -197,10 +206,10 @@ def ask_chatbot(question, text_embedder, retriever, prompt_builder):
     
     # --- 1단계: 규칙 기반 FAQ 확인 (Req 1 & 2) ---
     # 기획안의 "키워드 포함 여부" 로직
-    for keyword, answer in FIXED_FAQ_DATABASE.items():
-        if keyword in question:
-            print(f"[답변] 🤖 (규칙 기반 FAQ): {answer}")
-            return answer
+    for idx, keywords in enumerate(FAQ_KEYWORDS):
+        for kw in keywords:
+            if kw in question:
+                return FIXED_FAQ_DATABASE[idx]
 
     # --- 2단계: RAG + LLM 응답 (Req 3) ---
     print("(규칙 기반 답변 없음. RAG 파이프라인 실행...)")
@@ -263,9 +272,11 @@ async def chat(request: Request):
     print(f"💬 사용자 질문: {question}")
 
     # 1️⃣ 규칙 기반 FAQ 먼저 확인
-    for keyword, answer in FIXED_FAQ_DATABASE.items():
-        if keyword in question:
-            return {"response": answer}
+    for idx, keywords in enumerate(FAQ_KEYWORDS):
+        for kw in keywords:
+            if kw in question:
+                return {"response": FIXED_FAQ_DATABASE[idx]}
+
 
     # 2️⃣ RAG + Gemini 호출
     try:
