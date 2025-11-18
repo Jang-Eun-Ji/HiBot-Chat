@@ -15,6 +15,9 @@ text_embedder = None
 retriever = None
 prompt_builder = None
 
+# 동의어 파일 경로 
+SYNONYM_MAP_PATH = "synonym_map.json"
+
 
 # --- 0. [필수] API 키 설정 ---
 # .env 파일에서 환경변수 로드
@@ -60,16 +63,60 @@ FAQ_KEYWORDS = [
 
 
 # --- 2. 경로 및 모델 설정 ---
-# (2) ✨ 중요: build_index.py와 동일한 모델/저장소 경로 설정
 # EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # build_index.py와 동일한 모델 사용
 EMBEDDING_MODEL = "jhgan/ko-sbert-nli"  # 한국어 모델 (SSL 문제 해결 후 사용)
 DB_PATH = "hibot_store.db"  # build_index.py와 동일한 DuckDB 파일 경로
 
+# 동의어 맵 로드 함수
+def load_synonym_map():
+    try:
+        with open(SYNONYM_MAP_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"⚠️ synonym_map.json 불러오기 실패: {e}")
+        return {}
+
+SYNONYM_MAP = load_synonym_map()
+
+# 긴 문서를 문장 단위로 자르는 함수
+def smart_trim(text, max_length=600):
+    if not text:
+        return ""
+
+    if len(text) <= max_length:
+        return text
+
+    trimmed = text[:max_length]
+
+    # 여러 후보 문장부호 검색
+    end_marks = ['다.', '요.', '함.', '.', '!', '?', '\n']
+
+    last_cut = -1
+    for mark in end_marks:
+        pos = trimmed.rfind(mark)
+        if pos != -1:
+            end_pos = pos + len(mark)
+            if end_pos > last_cut:
+                last_cut = end_pos
+
+    # 문장부호 찾은 경우
+    if last_cut != -1:
+        return trimmed[:last_cut]
+
+    # 문장부호 없으면 단어 기준으로 자름
+    last_space = trimmed.rfind(" ")
+    if last_space != -1:
+        return trimmed[:last_space]
+
+    return trimmed
+
+
+
 # --- 3. Custom DuckDB Retriever Class ---
 class DuckDBEmbeddingRetriever:
     """DuckDB에서 유사한 문서를 검색하는 커스텀 리트리버"""
-    
-    def __init__(self, db_path, top_k=5):
+    # top_k: ai에 보낼 문서 개수
+    def __init__(self, db_path, top_k=6):
         self.db_path = db_path
         self.top_k = top_k
         self.conn = None
@@ -123,6 +170,28 @@ class DuckDBEmbeddingRetriever:
             documents.append(doc)
         
         return {"documents": documents}
+    
+
+def find_representative_keyword(question: str):
+    """
+    사용자의 질문에 SYNONYM_MAP의 동의어가 포함되어 있으면 
+    대표 키워드를 반환하는 함수
+    예: '야근 신청 어떻게?' → '시간외근무'
+    """
+    for rep_keyword, synonyms in SYNONYM_MAP.items():
+        # 대표 단어 자체가 질문에 있는 경우
+        if rep_keyword in question:
+            return rep_keyword
+        
+        # 동의어들이 질문 안에 포함되어 있는지
+        for syn in synonyms:
+            if syn in question:
+                return rep_keyword
+
+    return None
+
+
+
 # --- 4. [신규] RAG 파이프라인 "라우터" (Req 3) ---
 
 def initialize_chatbot():
@@ -150,8 +219,8 @@ def initialize_chatbot():
         text_embedder = SentenceTransformersTextEmbedder(model=EMBEDDING_MODEL)
         # 임베딩 기반 검색기(semantic search engine)
         # DuckDB 파일(hibot_store.db)에 접속해서 문서들의 임베딩(vector) 목록을 읽고 
-        # 질문의  임베딩과 코사인 유사도(similarity score)를 계산해서 가장 비슷한 문서 **5개(top_k=5)**를 반환함
-        retriever = DuckDBEmbeddingRetriever(db_path=DB_PATH, top_k=5)
+        # 질문의  임베딩과 코사인 유사도(similarity score)를 계산해서 가장 비슷한 문서 **12(top_k=12)**를 반환함
+        retriever = DuckDBEmbeddingRetriever(db_path=DB_PATH, top_k=6)
         print("✅ 임베더와 리트리버 초기화 완료")
     except Exception as e:
         print(f"❌ 임베더 초기화 실패: {e}")
@@ -161,19 +230,21 @@ def initialize_chatbot():
         return None
     
     prompt_template = """
-    넌 제공된 [문서] 내용을 바탕으로 답변하는 챗봇이다.
-    오직 [문서]에 있는 내용만을 근거로 [질문]에 대해 대답해.
-    [문서]에 관련 내용이 없다면, "죄송합니다. 해당 문서에는 관련 내용이 없습니다."라고 정확하게 답변해.
+넌 제공된 [문서] 내용을 바탕으로 답변하는 챗봇이다.
+오직 [문서]에 있는 내용만을 근거로 [질문]에 대해 대답해.
+[문서]에 관련 내용이 없다면, "죄송합니다. 관련 내용을 학습하지 않았습니다."라고 답변해.
 
-    [문서]:
-    {% for doc in documents %}
-      {{ doc.content }}
-    {% endfor %}
+[문서 요약된 내용]:
+{% for doc in documents %}
+[문서 {{ loop.index }}]
+{{ doc.content }}
 
-    [질문]: {{ question }}
+{% endfor %}
 
-    [답변]:
-    """
+[질문]: {{ question }}
+
+[답변]:
+"""
     prompt_builder = PromptBuilder(template=prompt_template, required_variables=["documents", "question"])
     
     # (C) 임베더 초기화 (SSL 오류 처리)
@@ -227,6 +298,12 @@ def ask_chatbot(question, text_embedder, retriever, prompt_builder):
         for kw in keywords:
             if kw in question:
                 return FIXED_FAQ_DATABASE[idx]
+            
+    # 2-A) 먼저 동의어 기반 대표 키워드 매핑
+    rep_keyword = find_representative_keyword(question)
+    if rep_keyword:
+        print(f"🔍 동의어 매핑: '{question}' → 대표 키워드 '{rep_keyword}'로 검색")
+        question = rep_keyword
 
     # --- 2단계: RAG + LLM 응답 (Req 3) ---
     print("(규칙 기반 답변 없음. RAG 파이프라인 실행...)")
@@ -244,7 +321,16 @@ def ask_chatbot(question, text_embedder, retriever, prompt_builder):
             return "죄송합니다. 문서에서 관련 내용을 찾지 못했습니다."
 
         # (C) 프롬프트 생성
-        prompt_result = prompt_builder.run(documents=retrieved_docs, question=question)
+        # 문서 내용을 trimmed 버전으로 변환
+        trimmed_docs = []
+        for d in retrieved_docs:
+            trimmed_content = smart_trim(d.content, 600)
+            trimmed_docs.append(
+                Document(id=d.id, content=trimmed_content, meta=d.meta)
+            )
+
+        prompt_result = prompt_builder.run(documents=trimmed_docs, question=question)
+
         full_prompt = prompt_result["prompt"]
         
         # (D) Gemini API로 답변 생성
@@ -297,6 +383,11 @@ async def chat(request: Request):
 
     # 2️⃣ RAG + Gemini 호출
     try:
+        rep_keyword = find_representative_keyword(question)
+        if rep_keyword:
+            print(f"🔍 동의어 매핑: '{question}' → '{rep_keyword}'")
+            question = rep_keyword
+
         query_emb = text_embedder.run(text=question)["embedding"]
         docs = retriever.run(query_embedding=[query_emb])["documents"]
 
@@ -305,7 +396,30 @@ async def chat(request: Request):
 
         prompt = prompt_builder.run(documents=docs, question=question)["prompt"]
         answer = create_gemini_response(prompt)
+        # 출처 정보 추가 
+        # --- 🔥 출처 포맷팅 ---
+        try:
+            raw_name = docs[0].meta.get("file_name", "출처 정보 없음")
+            page = docs[0].meta.get("page_number", None)
+
+            # .pdf 제거
+            if raw_name.lower().endswith(".pdf"):
+                clean_name = raw_name[:-4]
+            else:
+                clean_name = raw_name
+
+            # 페이지 번호 있으면 붙이기
+            if page:
+                source_text = f"{clean_name} p.{page}"
+            else:
+                source_text = clean_name
+
+            answer += f"\n\n📄 출처: {source_text}"
+
+        except Exception:
+            answer += "\n\n📄 출처: 알 수 없음"
         return {"response": answer}
+    
     except Exception as e:
         return {"response": f"서버 오류 발생: {str(e)}"}
     
