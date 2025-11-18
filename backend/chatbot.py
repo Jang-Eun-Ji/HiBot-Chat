@@ -190,11 +190,28 @@ def create_gemini_response(prompt):
     """Gemini API를 직접 사용하여 응답을 생성하는 함수 """
     try:
         genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
-        model = genai.GenerativeModel('gemini-2.5-flash-lite')  # Updated to available model
+        model = genai.GenerativeModel('gemini-2.0-flash')  # Updated to available model
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"Gemini API 호출 중 오류 발생: {str(e)}"
+        error_msg = str(e)
+
+        # 1) 무료 사용량(Quota) 초과 또는 Rate Limit 초과
+        if "429" in error_msg or "Resource exhausted" in error_msg:
+            return (
+                "⚠️ 현재 AI 무료 사용량 또는 호출 한도를 초과했습니다.\n"
+                " 잠시 후 다시 시도해주세요.\n"
+                "지속되면 관리자에게 문의해주세요."
+            )
+
+        # 2) API Key 문제
+        if "API key" in error_msg or "permission" in error_msg.lower():
+            return (
+                "⚠️ AI 서버 인증 오류가 발생했습니다."
+            )
+
+        # 3) 기타 오류
+        return f"Gemini API 호출 중 오류가 발생했습니다: {error_msg}"
 
 def ask_chatbot(question, text_embedder, retriever, prompt_builder):
     """
