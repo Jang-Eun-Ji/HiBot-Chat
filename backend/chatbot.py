@@ -11,12 +11,19 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+
+# --- 2. 경로 및 모델 설정 ---
+# EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # build_index.py와 동일한 모델 사용
+EMBEDDING_MODEL = "jhgan/ko-sbert-nli"  # 한국어 모델 (SSL 문제 해결 후 사용)
+DB_PATH = "hibot_store.db"  # build_index.py와 동일한 DuckDB 파일 경로
+# KEYWORD_FILE = "document_keywords.json" # 문서 키워드 매핑 파일 경로
+SYNONYM_MAP_PATH = "synonym_map.json" # 동의어 파일 경로 
+
+
 text_embedder = None
 retriever = None
 prompt_builder = None
 
-# 동의어 파일 경로 
-SYNONYM_MAP_PATH = "synonym_map.json"
 
 
 # --- 0. [필수] API 키 설정 ---
@@ -29,8 +36,7 @@ if google_api_key:
 else:
     print("⚠️  경고: GOOGLE_API_KEY가 설정되지 않았습니다.")
     # (API 키가 없어도 FAQ 기능은 작동합니다)
-    
-    
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -62,10 +68,7 @@ FAQ_KEYWORDS = [
 ]
 
 
-# --- 2. 경로 및 모델 설정 ---
-# EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # build_index.py와 동일한 모델 사용
-EMBEDDING_MODEL = "jhgan/ko-sbert-nli"  # 한국어 모델 (SSL 문제 해결 후 사용)
-DB_PATH = "hibot_store.db"  # build_index.py와 동일한 DuckDB 파일 경로
+
 
 # 동의어 맵 로드 함수
 def load_synonym_map():
@@ -136,6 +139,28 @@ class DuckDBEmbeddingRetriever:
             FROM documents 
             WHERE embedding IS NOT NULL
         """).fetchall()
+
+        # # ✅ 전체 유사도 계산 대상 문서 로그 출력
+        # print("\n📚 [유사도 계산 대상 전체 문서 로그]")
+
+        # for idx, (doc_id, content, meta_str, embedding) in enumerate(docs_data, start=1):
+        #     try:
+        #         meta = json.loads(meta_str) if meta_str else {}
+        #     except:
+        #         meta = {}
+
+        #     file_name = meta.get("file_name", "알 수 없음")
+        #     page = meta.get("page_number", "N/A")
+
+        #     print(f"""
+        # ----- 문서 후보 {idx} -----
+        # ID: {doc_id}
+        # 파일명: {file_name}
+        # 페이지: {page}
+        # 텍스트 길이: {len(content)}
+        # 미리보기: {content[:200].replace('\n', ' ')}
+        # """)
+
         
         if not docs_data:
             return {"documents": []}
@@ -408,13 +433,7 @@ async def chat(request: Request):
             else:
                 clean_name = raw_name
 
-            # 페이지 번호 있으면 붙이기
-            if page:
-                source_text = f"{clean_name} p.{page}"
-            else:
-                source_text = clean_name
-
-            answer += f"\n\n📄 출처: {source_text}"
+            answer += f"\n\n📄 출처: {clean_name}"
 
         except Exception:
             answer += "\n\n📄 출처: 알 수 없음"
