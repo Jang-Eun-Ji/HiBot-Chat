@@ -6,7 +6,7 @@ function FAQButton({ setIsFAQOpen, isFAQOpen }) {
         >
             {!isFAQOpen ? (
                 <img
-                    src="/KHIS_007.png" // ✅ public 폴더 이미지 접근
+                    src="/KHIS_007.png"
                     alt="FAQ Icon"
                     className="w-12 h-12 rounded-full object-cover"
                 />

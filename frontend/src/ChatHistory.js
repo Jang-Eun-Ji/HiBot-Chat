@@ -18,7 +18,7 @@ function ChatHistory({ chatHistory }) {
           <div
             className={`max-w-[70%] px-4 py-3 rounded-xl opacity-0 
             animate-[fadeInUp_0.5s_ease-out_forwards]
-            text-sm sm:text-[16px]
+            text-sm sm:text-[16px] whitespace-pre-line  
             ${msg.sender === "user"
               ? "bg-blue-500 text-white self-end"
               : "bg-gray-300 text-gray-900 self-start"

@@ -49,7 +49,7 @@ function FAQList({ setChatHistory, isLoading, setIsLoading }) {
                     <button
                         key={idx}
                         onClick={() => handleFAQClick(faq, idx)}
-                        className="bg-white text-slate-700 font-semibold px-3 py-2 rounded-xl shadow hover:bg-slate-100 transition"
+                        className="bg-white text-slate-700 font-semibold px-3 py-2 rounded-xl shadow hover:bg-slate-100 transition text-[8px] sm:text-sm"
                     >
                         {faq}
                     </button>
