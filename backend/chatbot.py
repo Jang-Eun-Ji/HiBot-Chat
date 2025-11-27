@@ -82,36 +82,36 @@ def load_synonym_map():
 SYNONYM_MAP = load_synonym_map()
 
 # 긴 문서를 문장 단위로 자르는 함수
-def smart_trim(text, max_length=600):
-    if not text:
-        return ""
+# def smart_trim(text, max_length=600):
+#     if not text:
+#         return ""
 
-    if len(text) <= max_length:
-        return text
+#     if len(text) <= max_length:
+#         return text
 
-    trimmed = text[:max_length]
+#     trimmed = text[:max_length]
 
-    # 여러 후보 문장부호 검색
-    end_marks = ['다.', '요.', '함.', '.', '!', '?', '\n']
+#     # 여러 후보 문장부호 검색
+#     end_marks = ['다.', '요.', '함.', '.', '!', '?', '\n']
 
-    last_cut = -1
-    for mark in end_marks:
-        pos = trimmed.rfind(mark)
-        if pos != -1:
-            end_pos = pos + len(mark)
-            if end_pos > last_cut:
-                last_cut = end_pos
+#     last_cut = -1
+#     for mark in end_marks:
+#         pos = trimmed.rfind(mark)
+#         if pos != -1:
+#             end_pos = pos + len(mark)
+#             if end_pos > last_cut:
+#                 last_cut = end_pos
 
-    # 문장부호 찾은 경우
-    if last_cut != -1:
-        return trimmed[:last_cut]
+#     # 문장부호 찾은 경우
+#     if last_cut != -1:
+#         return trimmed[:last_cut]
 
-    # 문장부호 없으면 단어 기준으로 자름
-    last_space = trimmed.rfind(" ")
-    if last_space != -1:
-        return trimmed[:last_space]
+#     # 문장부호 없으면 단어 기준으로 자름
+#     last_space = trimmed.rfind(" ")
+#     if last_space != -1:
+#         return trimmed[:last_space]
 
-    return trimmed
+#     return trimmed
 
 
 
@@ -347,14 +347,19 @@ def ask_chatbot(question, text_embedder, retriever, prompt_builder):
 
         # (C) 프롬프트 생성
         # 문서 내용을 trimmed 버전으로 변환
-        trimmed_docs = []
+        # trimmed_docs = []
+        # for d in retrieved_docs:
+        #     trimmed_content = smart_trim(d.content, 600)
+        #     trimmed_docs.append(
+        #         Document(id=d.id, content=trimmed_content, meta=d.meta)
+        #     )
+        prompt_docs = []
         for d in retrieved_docs:
-            trimmed_content = smart_trim(d.content, 600)
-            trimmed_docs.append(
-                Document(id=d.id, content=trimmed_content, meta=d.meta)
-            )
+            prompt_docs.append(
+                Document(id=d.id, content=d.content, meta=d.meta)
+    )
 
-        prompt_result = prompt_builder.run(documents=trimmed_docs, question=question)
+        prompt_result = prompt_builder.run(documents=prompt_docs, question=question)
 
         full_prompt = prompt_result["prompt"]
         
@@ -425,7 +430,6 @@ async def chat(request: Request):
         # --- 🔥 출처 포맷팅 ---
         try:
             raw_name = docs[0].meta.get("file_name", "출처 정보 없음")
-            page = docs[0].meta.get("page_number", None)
 
             # .pdf 제거
             if raw_name.lower().endswith(".pdf"):
