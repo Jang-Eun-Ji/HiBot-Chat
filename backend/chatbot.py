@@ -308,14 +308,17 @@ def initialize_chatbot():
         return None
     
     prompt_template = """
-넌 제공된 [문서] 내용을 바탕으로 답변하는 챗봇이다.
-오직 [문서]에 있는 내용만을 근거로 [질문]에 대해 대답해.
+당신은 내부 규정·지침·업무 매뉴얼을 기반으로 답변하는 AI 어시스턴트입니다.
 
-[문서 요약된 내용]:
+아래 [참고 문서]는 질문과 가장 연관성이 높은 문서들입니다. 질문자가 이해하기 쉽게 문서를 [참고 문서]를 정리 해서 답변해 주세요.
+
+[참고 문서]
 {% for doc in documents %}
-[문서 {{ loop.index }}]
+문서 {{ loop.index }}:
+- 파일명: {{ doc.meta.file_name }}
+- 유사도: {{ doc.meta.similarity }}
+- 내용:
 {{ doc.content }}
-
 {% endfor %}
 
 [질문]: {{ question }}
