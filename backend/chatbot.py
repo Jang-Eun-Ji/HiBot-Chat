@@ -18,7 +18,7 @@ EMBEDDING_MODEL = "jhgan/ko-sbert-nli"  # 한국어 모델 (SSL 문제 해결 �
 DB_PATH = "hibot_store.db"  # build_index.py와 동일한 DuckDB 파일 경로
 # KEYWORD_FILE = "document_keywords.json" # 문서 키워드 매핑 파일 경로
 SYNONYM_MAP_PATH = "synonym_map.json" # 동의어 파일 경로 
-
+EMPLOYEE_JSON_PATH = "employee_roles.json" # 직원 역할 정보 파일 경로
 
 text_embedder = None
 retriever = None
@@ -67,7 +67,44 @@ FAQ_KEYWORDS = [
     ["전산장비", "PC", "프린터", "시설물", "고장"]
 ]
 
+# employee_roles.json 로딩 함수
+def load_employee_roles():
+    try:
+        with open(EMPLOYEE_JSON_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"⚠️ employee_roles.json 불러오기 실패: {e}")
+        return []
 
+EMPLOYEES = load_employee_roles()
+
+def find_best_employee(question: str):
+    """
+    질문을 기반으로 가장 관련 있는 직원 추천
+    매칭 점수 기준:
+    - 질문 키워드가 업무(task)에 등장하면 +1
+    """
+    if not EMPLOYEES:
+        return None
+
+    # 질문을 단어로 분리
+    keywords = [w for w in question.split() if len(w) >= 2]
+
+    best_match = None
+    best_score = 0
+
+    for emp in EMPLOYEES:
+        score = 0
+        for task in emp["tasks"]:
+            for kw in keywords:
+                if kw in task:
+                    score += 1
+
+        if score > best_score:
+            best_score = score
+            best_match = emp
+
+    return best_match
 
 
 # 동의어 맵 로드 함수
@@ -115,86 +152,102 @@ SYNONYM_MAP = load_synonym_map()
 
 
 
-# --- 3. Custom DuckDB Retriever Class ---
+# --- 3. 질문과 비슷한 문서를 DuckDB에서 찾아주는 검색 엔진 ---
 class DuckDBEmbeddingRetriever:
-    """DuckDB에서 유사한 문서를 검색하는 커스텀 리트리버"""
-    # top_k: ai에 보낼 문서 개수
-    def __init__(self, db_path, top_k=6):
+    """
+    DuckDB 기반 semantic search retriever
+    ✔ top_k 개수 제한
+    ✔ similarity threshold 적용
+    ✔ similarity 정보 meta에 저장
+    ✔ 예쁘게 로그 출력
+    """
+
+    def __init__(self, db_path, top_k=6, threshold=0.5):
         self.db_path = db_path
         self.top_k = top_k
+        self.threshold = threshold
         self.conn = None
         
     def connect(self):
-        """DuckDB 연결"""
         if self.conn is None:
             self.conn = duckdb.connect(self.db_path)
-    
+
+
     def run(self, query_embedding):
-        """쿼리 임베딩과 유사한 문서들을 검색"""
+        """query_embedding(list) → DuckDB에서 문서 리스트 반환"""
         self.connect()
-        
-        # 모든 문서와 임베딩을 가져옴
+
+        # 모든 문서 로드
         docs_data = self.conn.execute("""
             SELECT id, content, meta, embedding 
             FROM documents 
             WHERE embedding IS NOT NULL
         """).fetchall()
 
-        # # ✅ 전체 유사도 계산 대상 문서 로그 출력
-        # print("\n📚 [유사도 계산 대상 전체 문서 로그]")
-
-        # for idx, (doc_id, content, meta_str, embedding) in enumerate(docs_data, start=1):
-        #     try:
-        #         meta = json.loads(meta_str) if meta_str else {}
-        #     except:
-        #         meta = {}
-
-        #     file_name = meta.get("file_name", "알 수 없음")
-        #     page = meta.get("page_number", "N/A")
-
-        #     print(f"""
-        # ----- 문서 후보 {idx} -----
-        # ID: {doc_id}
-        # 파일명: {file_name}
-        # 페이지: {page}
-        # 텍스트 길이: {len(content)}
-        # 미리보기: {content[:200].replace('\n', ' ')}
-        # """)
-
-        
         if not docs_data:
             return {"documents": []}
-        
-        # 코사인 유사도 계산
+
+        query_emb = np.array(query_embedding[0])
         similarities = []
+
+        print("\n📘 [DuckDB Retriever] 문서 유사도 계산 시작")
+        print(f" - Threshold = {self.threshold}")
+        print(" - --------------------------------------------")
+
+        # 각 문서와 similarity 계산
         for doc_id, content, meta_str, embedding in docs_data:
-            if embedding:
-                # 코사인 유사도 계산
-                doc_embedding = np.array(embedding)
-                query_emb = np.array(query_embedding[0])  # query_embedding is a list
-                
-                similarity = np.dot(query_emb, doc_embedding) / (
-                    np.linalg.norm(query_emb) * np.linalg.norm(doc_embedding)
-                )
-                
-                try:
-                    meta = json.loads(meta_str) if meta_str else {}
-                except:
-                    meta = {}
-                
-                similarities.append((similarity, doc_id, content, meta))
-        
-        # 유사도 순으로 정렬하고 top_k만 선택
+            if not embedding:
+                continue
+
+            doc_emb = np.array(embedding)
+
+            # 코사인 유사도 계산
+            similarity = float(
+                np.dot(query_emb, doc_emb) 
+                / (np.linalg.norm(query_emb) * np.linalg.norm(doc_emb))
+            )
+
+            # 메타 로드
+            try:
+                meta = json.loads(meta_str) if meta_str else {}
+            except:
+                meta = {}
+
+            file_name = meta.get("file_name", "알 수 없음")
+            page = meta.get("page_number", "N/A")
+
+            # 예쁜 로그 출력
+            print(f"🔎 문서: {file_name} (p.{page}) → 유사도: {similarity:.4f}")
+
+            # threshold 미달 → 건너뛰기
+            if similarity < self.threshold:
+                continue
+
+            similarities.append((similarity, doc_id, content, meta))
+
+        print(" - --------------------------------------------")
+
+        # threshold 미달 문서만 있었다면
+        if not similarities:
+            print("❌ threshold 이상 문서 없음 → 문서 없음으로 처리됨")
+            return {"documents": []}
+
+        # 상위 top_k만 선택
         similarities.sort(reverse=True, key=lambda x: x[0])
         top_docs = similarities[:self.top_k]
-        
+
         # Document 객체 생성
         documents = []
+        print("\n📘 최종 선택된 문서(top_k)")
         for similarity, doc_id, content, meta in top_docs:
-            doc = Document(id=doc_id, content=content, meta=meta)
-            documents.append(doc)
-        
+            meta["similarity"] = similarity
+            print(f"✔ {meta.get('file_name', '알 수 없음')} → {similarity:.4f}")
+            documents.append(Document(id=doc_id, content=content, meta=meta))
+
+        print("------------------------------------------------\n")
+
         return {"documents": documents}
+
     
 
 def find_representative_keyword(question: str):
@@ -257,7 +310,6 @@ def initialize_chatbot():
     prompt_template = """
 넌 제공된 [문서] 내용을 바탕으로 답변하는 챗봇이다.
 오직 [문서]에 있는 내용만을 근거로 [질문]에 대해 대답해.
-[문서]에 관련 내용이 없다면, "죄송합니다. 관련 내용을 학습하지 않았습니다."라고 답변해.
 
 [문서 요약된 내용]:
 {% for doc in documents %}
@@ -308,8 +360,8 @@ def create_gemini_response(prompt):
 
         # 3) 기타 오류
         return f"Gemini API 호출 중 오류가 발생했습니다: {error_msg}"
-
-def ask_chatbot(question, text_embedder, retriever, prompt_builder):
+# --- 5. 백엔드 테스트용 챗봇 실행 ---
+# def ask_chatbot(question, text_embedder, retriever, prompt_builder):
     """
     (✨ 신규 로직)
     사용자 질문을 받아서 FAQ(규칙)를 먼저 확인하고, 
@@ -342,17 +394,29 @@ def ask_chatbot(question, text_embedder, retriever, prompt_builder):
         retrieved_docs = retriever.run(query_embedding=[query_embedding])["documents"]
         
         if not retrieved_docs:
-            print("[답변] 🤖 (RAG): 죄송합니다. 문서에서 관련 내용을 찾지 못했습니다.")
-            return "죄송합니다. 문서에서 관련 내용을 찾지 못했습니다."
+            emp = find_best_employee(question)
 
-        # (C) 프롬프트 생성
-        # 문서 내용을 trimmed 버전으로 변환
-        # trimmed_docs = []
-        # for d in retrieved_docs:
-        #     trimmed_content = smart_trim(d.content, 600)
-        #     trimmed_docs.append(
-        #         Document(id=d.id, content=trimmed_content, meta=d.meta)
-        #     )
+            if emp:
+                dept = emp["department"]
+                name = emp["name"]
+                pos = emp["position"]
+                phone = emp["phone"]
+
+                return {
+                    "response": (
+                        f"해당 질문에 대해서는 정확한 안내가 어렵습니다.\n"
+                        f"자세한 내용은 {dept} {name} {pos}님({phone})께 문의 부탁드립니다."
+                    )
+                }
+
+            return {
+                "response": (
+                    "해당 질문에 대해 관련 문서와 담당자를 찾을 수 없습니다.\n"
+                    "경영지원부로 문의 부탁드립니다."
+                )
+            }
+
+        
         prompt_docs = []
         for d in retrieved_docs:
             prompt_docs.append(
@@ -373,7 +437,7 @@ def ask_chatbot(question, text_embedder, retriever, prompt_builder):
         print(f"[오류] ❌: {error_msg}")
         return error_msg
 
-# --- 5. 백엔드 테스트용 챗봇 실행 ---
+
 # if __name__ == "__main__":
 #     # 챗봇 파이프라인 1회 초기화
 #     pipeline_components = initialize_chatbot()
@@ -389,6 +453,7 @@ def ask_chatbot(question, text_embedder, retriever, prompt_builder):
 #         # (2) 문서 기반 질문 (RAG 사용)
 #         ask_chatbot("정보공개를 청구받은 부서는 며칠 내에 처리 해야해?", text_embedder, retriever, prompt_builder)
 
+# 챗봇 부팅 로직
 @app.on_event("startup")
 def startup_event():
     global text_embedder, retriever, prompt_builder
@@ -412,39 +477,63 @@ async def chat(request: Request):
 
 
     # 2️⃣ RAG + Gemini 호출
-    try:
-        rep_keyword = find_representative_keyword(question)
-        if rep_keyword:
-            print(f"🔍 동의어 매핑: '{question}' → '{rep_keyword}'")
-            question = rep_keyword
-
-        query_emb = text_embedder.run(text=question)["embedding"]
-        docs = retriever.run(query_embedding=[query_emb])["documents"]
-
-        if not docs:
-            return {"response": "죄송합니다. 문서에서 관련 내용을 찾지 못했습니다."}
-
-        prompt = prompt_builder.run(documents=docs, question=question)["prompt"]
-        answer = create_gemini_response(prompt)
-        # 출처 정보 추가 
-        # --- 🔥 출처 포맷팅 ---
-        try:
-            raw_name = docs[0].meta.get("file_name", "출처 정보 없음")
-
-            # .pdf 제거
-            if raw_name.lower().endswith(".pdf"):
-                clean_name = raw_name[:-4]
-            else:
-                clean_name = raw_name
-
-            answer += f"\n\n📄 출처: {clean_name}"
-
-        except Exception:
-            answer += "\n\n📄 출처: 알 수 없음"
-        return {"response": answer}
     
-    except Exception as e:
-        return {"response": f"서버 오류 발생: {str(e)}"}
+    rep_keyword = find_representative_keyword(question)
+    if rep_keyword:
+        print(f"🔍 동의어 매핑: '{question}' → '{rep_keyword}'")
+        question = rep_keyword
+
+    # 3️⃣ 질문 임베딩 생성 
+    query_emb = text_embedder.run(text=question)["embedding"]
+    # 4️⃣ DuckDB 검색
+    docs = retriever.run(query_embedding=[query_emb])["documents"]
+    print(f"DuckDB 검색된 문서 개수: {len(docs)}")
+
+    if not docs:
+        # 관련 문서 없으면 담당자 추천
+        print("🔍 관련 문서 없음 → 담당자 추천 로직 실행")
+        emp = find_best_employee(question)
+
+        if emp:
+            dept = emp["department"]
+            name = emp["name"]
+            pos = emp["position"]
+            phone = emp["phone"]
+
+            return {
+                "response": (
+                    f"해당 질문에 대해서는 정확한 안내가 어렵습니다.\n"
+                    f"자세한 내용은 {dept} {name} {pos}님({phone})께 문의 부탁드립니다."
+                )
+            }
+
+        return {
+            "response": (
+                "해당 질문에 대해 관련 문서와 담당자를 찾을 수 없습니다.\n"
+            )
+        }
+
+    # 6️⃣ 문서 있음 → RAG + Gemini
+    prompt = prompt_builder.run(documents=docs, question=question)["prompt"]
+    answer = create_gemini_response(prompt)
+    # 출처 정보 추가 
+    # --- 🔥 출처 포맷팅 ---
+    try:
+        raw_name = docs[0].meta.get("file_name", "출처 정보 없음")
+        # .pdf 제거
+        if raw_name.lower().endswith(".pdf"):
+            clean_name = raw_name[:-4]
+        else:
+            clean_name = raw_name
+
+        answer += f"\n\n📄 출처: {clean_name}"
+
+    except Exception:
+        answer += "\n\n📄 출처: 알 수 없음"
+    return {"response": answer}
+    
+    # except Exception as e:
+    #     return {"response": f"서버 오류 발생: {str(e)}"}
     
 @app.post("/api/faq")
 async def faq(request: Request):
