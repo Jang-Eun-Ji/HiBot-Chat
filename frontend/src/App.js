@@ -12,9 +12,9 @@ function App() {
   const [isFAQOpen, setIsFAQOpen] = useState(false);
 
   return (
-    <div className="h-screen bg-slate-200 flex flex-col justify-center items-center relative">
+    <div className="h-screen bg-slate-200 flex justify-center items-center relative">
       <Logo />
-      <div className="flex flex-col items-center justify-center xl:flex-row w-[80%] min-w-[300px] gap-4 relative">
+      <div className="flex items-center justify-center flex-row w-[90%] sm:w-[85%] gap-4 relative">
         <div className="w-[80%] flex-1 flex flex-col gap-4">
           <ChatHistory chatHistory={chatHistory} />
           <Input
