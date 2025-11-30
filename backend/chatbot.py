@@ -8,7 +8,7 @@ from haystack.dataclasses import Document
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -347,22 +347,26 @@ def create_gemini_response(prompt):
     except Exception as e:
         error_msg = str(e)
 
-        # 1) 무료 사용량(Quota) 초과 또는 Rate Limit 초과
+        # 1) AI 무료 사용량(Quota) 초과 또는 Rate Limit 초과
         if "429" in error_msg or "Resource exhausted" in error_msg:
-            return (
-                "⚠️ 현재 AI 무료 사용량 또는 호출 한도를 초과했습니다.\n"
-                " 잠시 후 다시 시도해주세요.\n"
-                "지속되면 관리자에게 문의해주세요."
+            raise HTTPException(
+                status_code=429,
+                detail="AI Quota Exceeded"
             )
 
         # 2) API Key 문제
         if "API key" in error_msg or "permission" in error_msg.lower():
-            return (
-                "⚠️ AI 서버 인증 오류가 발생했습니다."
+            raise HTTPException(
+                status_code=403,
+                detail="Permission Denied"
             )
 
         # 3) 기타 오류
-        return f"Gemini API 호출 중 오류가 발생했습니다: {error_msg}"
+        raise HTTPException(
+            status_code=500,
+            detail="Gemini Internal Error"
+        )
+    
 # --- 5. 백엔드 테스트용 챗봇 실행 ---
 # def ask_chatbot(question, text_embedder, retriever, prompt_builder):
     """
