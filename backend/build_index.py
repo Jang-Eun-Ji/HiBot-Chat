@@ -18,7 +18,7 @@ from haystack.components.embedders import SentenceTransformersDocumentEmbedder
 # ------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "hibot_store.db")
-DATA_PATH = os.path.join(BASE_DIR, "../hibot-chat-docs-pdf")
+DATA_PATH = os.path.join(BASE_DIR, "../hibot-chat-docs-txt")
 
 EMBEDDING_MODEL = "jhgan/ko-sbert-nli"
 
@@ -92,32 +92,46 @@ class DuckDBDocumentStore:
 # ------------------------------
 # 3. OCR 지원 PDF → Text 변환기
 # ------------------------------
-def extract_text_with_ocr(pdf_path):
-    doc = fitz.open(pdf_path)
-    full_text = ""
+# def extract_text_with_ocr(pdf_path):
+#     doc = fitz.open(pdf_path)
+#     full_text = ""
 
-    for page in doc:
-        # (1) 일반 텍스트 추출
-        full_text += page.get_text("text") + "\n"
+#     for page in doc:
+#         # (1) 일반 텍스트 추출
+#         full_text += page.get_text("text") + "\n"
 
-        # (2) 이미지 OCR 처리
-        for img in page.get_images(full=True):
-            xref = img[0]
-            base = doc.extract_image(xref)
-            image_bytes = base["image"]
+#         # (2) 이미지 OCR 처리
+#         for img in page.get_images(full=True):
+#             xref = img[0]
+#             base = doc.extract_image(xref)
+#             image_bytes = base["image"]
 
-            image = Image.open(io.BytesIO(image_bytes))
-            ocr_text = pytesseract.image_to_string(image, lang="kor+eng")
-            full_text += ocr_text + "\n"
+#             image = Image.open(io.BytesIO(image_bytes))
+#             ocr_text = pytesseract.image_to_string(image, lang="kor+eng")
+#             full_text += ocr_text + "\n"
 
-    return full_text
+#     return full_text
 
 
 # ------------------------------
 # 4. PDF → Haystack Document 변환
 # ------------------------------
-def convert_pdf_to_documents(pdf_path, file_name):
-    text = extract_text_with_ocr(pdf_path)
+# def convert_pdf_to_documents(pdf_path, file_name):
+#     text = extract_text_with_ocr(pdf_path)
+#     return [
+#         Document(
+#             content=text,
+#             meta={"file_name": file_name}
+#         )
+#     ]
+
+# ------------------------------
+# 3. TXT → Haystack Document 변환
+# ------------------------------
+def convert_txt_to_documents(txt_path, file_name):
+    with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
+        text = f.read()
+
     return [
         Document(
             content=text,
@@ -149,17 +163,17 @@ def main(force_rebuild=False):
 
     # 실제 폴더에 존재하는 PDF 목록
     if not os.path.exists(DATA_PATH):
-        print("❌ PDF 폴더가 없습니다:", DATA_PATH)
+        print("❌ TXT 폴더가 없습니다:", DATA_PATH)
         return
 
-    pdf_files = {f for f in os.listdir(DATA_PATH) if f.endswith(".pdf")}
-    new_files = pdf_files - indexed_files
+    txt_files = {f for f in os.listdir(DATA_PATH) if f.endswith(".txt")}
+    new_files = txt_files - indexed_files
 
     if not new_files:
-        print("✅ 새로 색인할 PDF 파일이 없습니다.")
+        print("✅ 새로 색인할 TXT 파일이 없습니다.")
         return
 
-    print(f"🚨 새 PDF 발견 → {len(new_files)}개 색인 시작: {list(new_files)}")
+    print(f"🚨 새 TXT 발견 → {len(new_files)}개 색인 시작: {list(new_files)}")
 
     # 문서 분할기
     splitter = DocumentSplitter(
@@ -178,10 +192,10 @@ def main(force_rebuild=False):
     for file_name in new_files:
         print(f"📄 처리 중: {file_name}")
 
-        pdf_path = os.path.join(DATA_PATH, file_name)
+        txt_path = os.path.join(DATA_PATH, file_name)
 
         # (1) OCR 포함 PDF → Document 변환
-        docs = convert_pdf_to_documents(pdf_path, file_name)
+        docs = convert_txt_to_documents(txt_path, file_name)
 
         # (2) 문장 단위 chunking
         split_docs = splitter.run(docs)["documents"]
