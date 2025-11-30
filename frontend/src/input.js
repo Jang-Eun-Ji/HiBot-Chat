@@ -34,7 +34,7 @@ function Input({ setChatHistory, isLoading, setIsLoading }) {
             });
 
             const data = await response.json();
-
+            console.log("챗봇답변:", data);
             // 4. 백엔드에서 받은 봇의 응답을 대화 내역에 추가
             setChatHistory(prevHistory => {
                 const newHistory = [...prevHistory];
@@ -61,7 +61,7 @@ function Input({ setChatHistory, isLoading, setIsLoading }) {
                     type="text"
                     value={currentMessage}
                     onChange={(e) => setCurrentMessage(e.target.value)}
-                    placeholder="질문을 입력하세요..."
+                    placeholder="무엇이 궁금하신가요?"
                     class="w-full border border-gray-300 rounded-lg py-2 px-3 pr-16 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button
