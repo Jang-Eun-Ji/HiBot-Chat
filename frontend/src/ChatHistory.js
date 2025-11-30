@@ -18,7 +18,7 @@ function ChatHistory({ chatHistory }) {
             ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
         >
           <div
-            className={`max-w-[90%] px-4 py-3 rounded-xl opacity-0 
+            className={`max-w-[95%] px-4 py-3 rounded-xl opacity-0 
               animate-[fadeInUp_0.5s_ease-out_forwards]
               text-sm sm:text-[16px]
               ${msg.sender === "user"
