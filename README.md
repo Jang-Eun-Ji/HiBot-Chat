@@ -29,7 +29,7 @@
 - **AI**: Gemini API
 - **Backend**: FastAPI
 - **DB**: DuckDB (`hibot_store.db`)
-- **Frontend**: React (별도 `frontend/` 폴더)
+- **Frontend**: React
 
 ---
 
